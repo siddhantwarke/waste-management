@@ -33,9 +33,6 @@ const Navigation = ({ auth, logout }) => {
                 
                 {auth.user?.role === 'customer' && (
                   <>
-                    <LinkContainer to="/request-pickup">
-                      <Nav.Link>Request Pickup</Nav.Link>
-                    </LinkContainer>
                     <LinkContainer to="/my-requests">
                       <Nav.Link>My Requests</Nav.Link>
                     </LinkContainer>

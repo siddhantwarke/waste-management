@@ -36,6 +36,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/waste', require('./routes/waste'));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -68,6 +69,10 @@ app.use('*', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
+const server = app.listen(PORT, () => {
+  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+});
+
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
@@ -83,10 +88,6 @@ process.on('SIGINT', () => {
     console.log('HTTP server closed');
     require('./config/database').close();
   });
-});
-
-const server = app.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });
 
 module.exports = app;

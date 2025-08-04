@@ -56,6 +56,22 @@ class DatabaseManager {
         last_name VARCHAR(50) NOT NULL,
         phone VARCHAR(20),
         address TEXT,
+        country VARCHAR(100),
+        state VARCHAR(100),
+        city VARCHAR(100),
+        collector_group_name VARCHAR(100),
+        e_waste_price DECIMAL(10,2),
+        plastic_price DECIMAL(10,2),
+        organic_price DECIMAL(10,2),
+        paper_price DECIMAL(10,2),
+        metal_price DECIMAL(10,2),
+        glass_price DECIMAL(10,2),
+        hazardous_price DECIMAL(10,2),
+        mixed_price DECIMAL(10,2),
+        latitude DECIMAL(10, 8),
+        longitude DECIMAL(11, 8),
+        service_radius DECIMAL(5,2) DEFAULT 10.0,
+        is_available BOOLEAN DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         is_active BOOLEAN DEFAULT 1
@@ -89,9 +105,53 @@ class DatabaseManager {
       this.db.run(createWasteRequestsTable);
       console.log('Waste requests table ready');
       
+      // Add new columns to existing users table if they don't exist
+      this.addLocationColumns();
+      
       this.saveDatabase();
     } catch (error) {
       console.error('Error creating tables:', error.message);
+    }
+  }
+
+  addLocationColumns() {
+    try {
+      // Check if columns exist and add them if they don't
+      const alterQueries = [
+        'ALTER TABLE users ADD COLUMN country VARCHAR(100)',
+        'ALTER TABLE users ADD COLUMN state VARCHAR(100)', 
+        'ALTER TABLE users ADD COLUMN city VARCHAR(100)',
+        'ALTER TABLE users ADD COLUMN collector_group_name VARCHAR(100)',
+        // New waste type price columns
+        'ALTER TABLE users ADD COLUMN e_waste_price DECIMAL(10,2)',
+        'ALTER TABLE users ADD COLUMN plastic_price DECIMAL(10,2)',
+        'ALTER TABLE users ADD COLUMN organic_price DECIMAL(10,2)',
+        'ALTER TABLE users ADD COLUMN paper_price DECIMAL(10,2)',
+        'ALTER TABLE users ADD COLUMN metal_price DECIMAL(10,2)',
+        'ALTER TABLE users ADD COLUMN glass_price DECIMAL(10,2)',
+        'ALTER TABLE users ADD COLUMN hazardous_price DECIMAL(10,2)',
+        'ALTER TABLE users ADD COLUMN mixed_price DECIMAL(10,2)'
+      ];
+
+      const columnNames = [
+        'country', 'state', 'city', 'collector_group_name',
+        'e_waste_price', 'plastic_price', 'organic_price', 'paper_price',
+        'metal_price', 'glass_price', 'hazardous_price', 'mixed_price'
+      ];
+
+      alterQueries.forEach((query, index) => {
+        try {
+          this.db.run(query);
+          console.log(`Added ${columnNames[index]} column to users table`);
+        } catch (error) {
+          // Column might already exist, ignore the error
+          if (!error.message.includes('duplicate column name')) {
+            console.error(`Error adding ${columnNames[index]} column:`, error.message);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error adding location columns:', error);
     }
   }
 

@@ -9,6 +9,8 @@ import store from './redux/store';
 // Components
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
+import MyRequests from './components/MyRequests';
+import Profile from './components/Profile';
 
 // Pages
 import Home from './pages/Home';
@@ -56,25 +58,10 @@ function App() {
               
               {/* Customer-only Routes */}
               <Route
-                path="/request-pickup"
-                element={
-                  <ProtectedRoute requiredRole="customer">
-                    <div className="container py-5">
-                      <h2>Request Pickup - Coming Soon</h2>
-                      <p>This feature will allow customers to request waste pickup.</p>
-                    </div>
-                  </ProtectedRoute>
-                }
-              />
-              
-              <Route
                 path="/my-requests"
                 element={
                   <ProtectedRoute requiredRole="customer">
-                    <div className="container py-5">
-                      <h2>My Requests - Coming Soon</h2>
-                      <p>This feature will show customer's pickup requests.</p>
-                    </div>
+                    <MyRequests />
                   </ProtectedRoute>
                 }
               />
@@ -109,10 +96,7 @@ function App() {
                 path="/profile"
                 element={
                   <ProtectedRoute>
-                    <div className="container py-5">
-                      <h2>Profile - Coming Soon</h2>
-                      <p>This feature will allow users to manage their profile.</p>
-                    </div>
+                    <Profile />
                   </ProtectedRoute>
                 }
               />

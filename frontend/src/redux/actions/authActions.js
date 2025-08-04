@@ -5,7 +5,8 @@ import {
   AUTH_FAILURE,
   LOGOUT,
   CLEAR_AUTH_ERROR,
-  SET_USER
+  SET_USER,
+  UPDATE_USER
 } from './types';
 
 // API Base URL
@@ -99,6 +100,10 @@ export const register = (userData) => async (dispatch) => {
 // Login user
 export const login = (email, password) => async (dispatch) => {
   try {
+    console.log('Attempting login for:', email);
+    
+    // Clear any existing auth state before attempting login
+    setAuthToken(null);
     dispatch({ type: AUTH_LOADING });
     
     const config = {
@@ -108,6 +113,7 @@ export const login = (email, password) => async (dispatch) => {
     };
     
     const res = await axios.post(`${API_URL}/auth/login`, { email, password }, config);
+    console.log('Login response:', res.data);
     
     const { token, user } = res.data;
     
@@ -124,7 +130,11 @@ export const login = (email, password) => async (dispatch) => {
     return { success: true, message: res.data.message };
   } catch (error) {
     console.error('Login error:', error);
+    console.error('Error response:', error.response?.data);
     const errorMessage = error.response?.data?.message || 'Login failed';
+    
+    // Clear auth state on login failure
+    setAuthToken(null);
     
     dispatch({
       type: AUTH_FAILURE,
@@ -165,6 +175,33 @@ export const getUserProfile = () => async (dispatch) => {
     return { 
       success: false, 
       message: error.response?.data?.message || 'Failed to get profile' 
+    };
+  }
+};
+
+// Update user profile
+export const updateProfile = (profileData) => async (dispatch) => {
+  try {
+    const res = await axios.put(`${API_URL}/auth/profile`, profileData);
+    
+    dispatch({
+      type: UPDATE_USER,
+      payload: res.data.user
+    });
+    
+    return { success: true, message: res.data.message };
+  } catch (error) {
+    console.error('Update profile error:', error);
+    
+    dispatch({
+      type: AUTH_FAILURE,
+      payload: error.response?.data?.message || 'Failed to update profile' 
+    });
+    
+    return { 
+      success: false, 
+      message: error.response?.data?.message || 'Failed to update profile',
+      errors: error.response?.data?.errors || []
     };
   }
 };

@@ -6,6 +6,7 @@ import { Formik } from 'formik';
 import * as Yup from 'yup';
 import { register, clearAuthError } from '../redux/actions/authActions';
 import { toast } from 'react-toastify';
+import { WASTE_TYPES } from '../utils/wasteTypes';
 
 const Register = ({ auth, register, clearAuthError }) => {
   const navigate = useNavigate();
@@ -44,8 +45,47 @@ const Register = ({ auth, register, clearAuthError }) => {
       .matches(/^[+]?[1-9][\d]{0,15}$/, 'Please provide a valid phone number')
       .required('Phone number is required'),
     address: Yup.string()
+      .min(10, 'Address must be at least 10 characters')
       .max(500, 'Address must not exceed 500 characters')
-      .optional()
+      .required('Address is required'),
+    country: Yup.string()
+      .min(2, 'Country must be at least 2 characters')
+      .max(100, 'Country must not exceed 100 characters')
+      .matches(/^[a-zA-Z\s]+$/, 'Country can only contain letters and spaces')
+      .required('Country is required'),
+    state: Yup.string()
+      .min(2, 'State must be at least 2 characters')
+      .max(100, 'State must not exceed 100 characters')
+      .matches(/^[a-zA-Z\s]+$/, 'State can only contain letters and spaces')
+      .required('State is required'),
+    city: Yup.string()
+      .min(2, 'City must be at least 2 characters')
+      .max(100, 'City must not exceed 100 characters')
+      .matches(/^[a-zA-Z\s]+$/, 'City can only contain letters and spaces')
+      .required('City is required'),
+    // Collector-specific validations (conditional)
+    collector_group_name: Yup.string().when('role', {
+      is: 'collector',
+      then: (schema) => schema
+        .min(2, 'Collector group name must be at least 2 characters')
+        .max(100, 'Collector group name must not exceed 100 characters')
+        .required('Collector group name is required'),
+      otherwise: (schema) => schema.notRequired()
+    }),
+    // Dynamic validation for waste price fields
+    ...Object.fromEntries(
+      WASTE_TYPES.map(type => [
+        type.key,
+        Yup.number().when('role', {
+          is: 'collector',
+          then: (schema) => schema
+            .min(0, 'Price must be 0 or greater')
+            .max(10000, 'Price must not exceed 10000')
+            .required(`${type.label} price is required`),
+          otherwise: (schema) => schema.notRequired()
+        })
+      ])
+    )
   });
 
   const handleSubmit = async (values, { setSubmitting, setFieldError }) => {
@@ -113,7 +153,14 @@ const Register = ({ auth, register, clearAuthError }) => {
                   first_name: '',
                   last_name: '',
                   phone: '',
-                  address: ''
+                  address: '',
+                  country: '',
+                  state: '',
+                  city: '',
+                  // Collector-specific fields
+                  collector_group_name: '',
+                  // Dynamic price fields for each waste type
+                  ...Object.fromEntries(WASTE_TYPES.map(type => [type.key, '']))
                 }}
                 validationSchema={validationSchema}
                 onSubmit={handleSubmit}
@@ -280,7 +327,7 @@ const Register = ({ auth, register, clearAuthError }) => {
                     </Form.Group>
 
                     <Form.Group className="mb-4">
-                      <Form.Label>Address (Optional)</Form.Label>
+                      <Form.Label>Address <span className="text-danger">*</span></Form.Label>
                       <Form.Control
                         as="textarea"
                         rows={3}
@@ -289,12 +336,136 @@ const Register = ({ auth, register, clearAuthError }) => {
                         onChange={handleChange}
                         onBlur={handleBlur}
                         isInvalid={touched.address && errors.address}
-                        placeholder="Enter your address"
+                        placeholder="Enter your complete address"
                       />
                       <Form.Control.Feedback type="invalid">
                         {errors.address}
                       </Form.Control.Feedback>
                     </Form.Group>
+
+                    <Row>
+                      <Col md={6}>
+                        <Form.Group className="mb-3">
+                          <Form.Label>Country <span className="text-danger">*</span></Form.Label>
+                          <Form.Control
+                            type="text"
+                            name="country"
+                            value={values.country}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            isInvalid={touched.country && errors.country}
+                            placeholder="Enter your country"
+                          />
+                          <Form.Control.Feedback type="invalid">
+                            {errors.country}
+                          </Form.Control.Feedback>
+                        </Form.Group>
+                      </Col>
+                      <Col md={6}>
+                        <Form.Group className="mb-3">
+                          <Form.Label>State <span className="text-danger">*</span></Form.Label>
+                          <Form.Control
+                            type="text"
+                            name="state"
+                            value={values.state}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            isInvalid={touched.state && errors.state}
+                            placeholder="Enter your state"
+                          />
+                          <Form.Control.Feedback type="invalid">
+                            {errors.state}
+                          </Form.Control.Feedback>
+                        </Form.Group>
+                      </Col>
+                    </Row>
+
+                    <Form.Group className="mb-4">
+                      <Form.Label>City <span className="text-danger">*</span></Form.Label>
+                      <Form.Control
+                        type="text"
+                        name="city"
+                        value={values.city}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        isInvalid={touched.city && errors.city}
+                        placeholder="Enter your city"
+                      />
+                      <Form.Control.Feedback type="invalid">
+                        {errors.city}
+                      </Form.Control.Feedback>
+                    </Form.Group>
+
+                    {/* Collector-specific fields */}
+                    {values.role === 'collector' && (
+                      <>
+                        <div className="mt-4 mb-3">
+                          <h6 className="text-primary border-bottom pb-2">
+                            <i className="fas fa-truck me-2"></i>
+                            Collector Information
+                          </h6>
+                        </div>
+                        
+                        <Form.Group className="mb-3">
+                          <Form.Label>Collector Group Name <span className="text-danger">*</span></Form.Label>
+                          <Form.Control
+                            type="text"
+                            name="collector_group_name"
+                            value={values.collector_group_name}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            isInvalid={touched.collector_group_name && errors.collector_group_name}
+                            placeholder="Enter your collector group/company name"
+                          />
+                          <Form.Control.Feedback type="invalid">
+                            {errors.collector_group_name}
+                          </Form.Control.Feedback>
+                        </Form.Group>
+
+                        <div className="mb-3">
+                          <h6 className="text-secondary">
+                            <i className="fas fa-tags me-2"></i>
+                            Waste Collection Prices (per kg)
+                          </h6>
+                          <small className="text-muted">Enter your pricing for different types of waste collection</small>
+                        </div>
+
+                        <Row>
+                          {WASTE_TYPES.map((wasteType, index) => (
+                            <Col md={6} key={wasteType.value}>
+                              <Form.Group className="mb-3">
+                                <Form.Label>
+                                  <span className="me-2" style={{ fontSize: '1.2em' }}>{wasteType.emoji}</span>
+                                  {wasteType.label} <span className="text-danger">*</span>
+                                </Form.Label>
+                                <div className="input-group">
+                                  <span className="input-group-text">
+                                    <i className="fas fa-dollar-sign"></i>
+                                  </span>
+                                  <Form.Control
+                                    type="number"
+                                    step="0.01"
+                                    name={wasteType.key}
+                                    value={values[wasteType.key]}
+                                    onChange={handleChange}
+                                    onBlur={handleBlur}
+                                    isInvalid={touched[wasteType.key] && errors[wasteType.key]}
+                                    placeholder="0.00"
+                                  />
+                                  <span className="input-group-text">
+                                    <i className="fas fa-weight-hanging me-1"></i>
+                                    / kg
+                                  </span>
+                                </div>
+                                <Form.Control.Feedback type="invalid">
+                                  {errors[wasteType.key]}
+                                </Form.Control.Feedback>
+                              </Form.Group>
+                            </Col>
+                          ))}
+                        </Row>
+                      </>
+                    )}
 
                     <div className="d-grid gap-2">
                       <Button
