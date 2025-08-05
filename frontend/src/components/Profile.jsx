@@ -13,7 +13,8 @@ const Profile = ({ auth, getUserProfile, updateProfile }) => {
   const [loading, setLoading] = useState(false);
   const [profileData, setProfileData] = useState(null);
 
-  const validationSchema = Yup.object({
+  // Create validation schema as a function to access current profileData
+  const getValidationSchema = () => Yup.object({
     first_name: Yup.string()
       .min(2, 'First name must be at least 2 characters')
       .max(50, 'First name must not exceed 50 characters')
@@ -94,11 +95,57 @@ const Profile = ({ auth, getUserProfile, updateProfile }) => {
     try {
       setSubmitting(true);
       
-      const result = await updateProfile(values);
+      console.log('Profile update - submitting values:', values);
+      console.log('Profile update - current user:', user);
+      
+      // Filter data based on user role
+      const baseData = {
+        first_name: values.first_name,
+        last_name: values.last_name,
+        phone: values.phone,
+        address: values.address,
+        country: values.country,
+        state: values.state,
+        city: values.city
+      };
+      
+      // Only include collector-specific fields if user is a collector and they have values
+      let submitData = baseData;
+      if (user && user.role === 'collector') {
+        const collectorData = {};
+        
+        // Only include collector fields that have values
+        if (values.collector_group_name && values.collector_group_name.trim()) {
+          collectorData.collector_group_name = values.collector_group_name.trim();
+        }
+        
+        // Only include price fields that have numeric values
+        const priceFields = ['e_waste_price', 'plastic_price', 'organic_price', 'paper_price', 
+                           'metal_price', 'glass_price', 'hazardous_price', 'mixed_price'];
+        
+        priceFields.forEach(field => {
+          if (values[field] && values[field].toString().trim() && !isNaN(values[field])) {
+            collectorData[field] = parseFloat(values[field]);
+          }
+        });
+        
+        submitData = {
+          ...baseData,
+          ...collectorData
+        };
+      }
+      
+      console.log('Profile update - filtered submit data:', submitData);
+      
+      const result = await updateProfile(submitData);
+      
+      console.log('Profile update - result:', result);
       
       if (result.success) {
         toast.success(result.message);
         setProfileData({ ...profileData, ...values });
+        // Reload profile to get fresh data from server
+        await loadProfile();
       } else {
         if (result.errors && result.errors.length > 0) {
           // Handle validation errors from backend
@@ -110,6 +157,7 @@ const Profile = ({ auth, getUserProfile, updateProfile }) => {
         }
       }
     } catch (error) {
+      console.error('Profile update error:', error);
       toast.error('An unexpected error occurred');
     } finally {
       setSubmitting(false);
@@ -197,7 +245,7 @@ const Profile = ({ auth, getUserProfile, updateProfile }) => {
                   // Dynamic price fields for each waste type
                   ...Object.fromEntries(WASTE_TYPES.map(type => [type.key, profileData[type.key] || '']))
                 }}
-                validationSchema={validationSchema}
+                validationSchema={getValidationSchema()}
                 onSubmit={handleSubmit}
                 enableReinitialize={true}
               >

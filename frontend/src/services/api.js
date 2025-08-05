@@ -30,8 +30,20 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
+    // Only auto-redirect on 401 for certain endpoints that should definitely redirect
+    // Let Redux actions handle 401 errors for other endpoints gracefully
     if (error.response?.status === 401) {
-      // Token expired or invalid
+      const config = error.config;
+      
+      // Don't auto-redirect for profile updates and other user actions
+      // Let the Redux actions handle these 401s
+      if (config?.url?.includes('/auth/profile') || 
+          config?.url?.includes('/auth/verify')) {
+        return Promise.reject(error);
+      }
+      
+      // Only auto-redirect for critical auth failures
+      console.log('Critical auth failure, redirecting to login');
       localStorage.removeItem('token');
       delete api.defaults.headers.common['Authorization'];
       window.location.href = '/login';

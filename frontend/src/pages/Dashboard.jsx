@@ -934,6 +934,20 @@ const Dashboard = ({ auth }) => {
                 </Form.Group>
                 
                 <Form.Group className="mb-3">
+                  <Form.Label>City</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={user?.city || ''}
+                    readOnly
+                    className="bg-light"
+                    placeholder="City not specified in profile"
+                  />
+                  <Form.Text className="text-muted">
+                    Your registered city (readonly). Update your profile to change this.
+                  </Form.Text>
+                </Form.Group>
+                
+                <Form.Group className="mb-3">
                   <Form.Label>Pickup Date</Form.Label>
                   <Form.Control
                     type="date"

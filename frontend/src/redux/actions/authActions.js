@@ -1,4 +1,4 @@
-import axios from 'axios';
+import api from '../../services/api';
 import {
   AUTH_LOADING,
   AUTH_SUCCESS,
@@ -9,16 +9,12 @@ import {
   UPDATE_USER
 } from './types';
 
-// API Base URL
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-
-// Set token in axios headers
+// Set token in localStorage and api defaults
 const setAuthToken = (token) => {
   if (token) {
-    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     localStorage.setItem('token', token);
+    // The api interceptor will handle adding the Bearer token
   } else {
-    delete axios.defaults.headers.common['Authorization'];
     localStorage.removeItem('token');
   }
 };
@@ -33,7 +29,7 @@ export const loadUser = () => async (dispatch) => {
     try {
       dispatch({ type: AUTH_LOADING });
       
-      const res = await axios.get(`${API_URL}/auth/verify`);
+      const res = await api.get('/auth/verify');
       
       dispatch({
         type: AUTH_SUCCESS,
@@ -58,13 +54,7 @@ export const register = (userData) => async (dispatch) => {
   try {
     dispatch({ type: AUTH_LOADING });
     
-    const config = {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    };
-    
-    const res = await axios.post(`${API_URL}/auth/register`, userData, config);
+    const res = await api.post('/auth/register', userData);
     
     const { token, user } = res.data;
     
@@ -106,13 +96,7 @@ export const login = (email, password) => async (dispatch) => {
     setAuthToken(null);
     dispatch({ type: AUTH_LOADING });
     
-    const config = {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    };
-    
-    const res = await axios.post(`${API_URL}/auth/login`, { email, password }, config);
+    const res = await api.post('/auth/login', { email, password });
     console.log('Login response:', res.data);
     
     const { token, user } = res.data;
@@ -162,7 +146,7 @@ export const clearAuthError = () => (dispatch) => {
 // Get user profile
 export const getUserProfile = () => async (dispatch) => {
   try {
-    const res = await axios.get(`${API_URL}/auth/profile`);
+    const res = await api.get('/auth/profile');
     
     dispatch({
       type: SET_USER,
@@ -182,7 +166,12 @@ export const getUserProfile = () => async (dispatch) => {
 // Update user profile
 export const updateProfile = (profileData) => async (dispatch) => {
   try {
-    const res = await axios.put(`${API_URL}/auth/profile`, profileData);
+    console.log('Redux updateProfile - sending data:', profileData);
+    console.log('Redux updateProfile - token exists:', !!localStorage.getItem('token'));
+    
+    const res = await api.put('/auth/profile', profileData);
+    
+    console.log('Redux updateProfile - response:', res.data);
     
     dispatch({
       type: UPDATE_USER,
@@ -191,12 +180,20 @@ export const updateProfile = (profileData) => async (dispatch) => {
     
     return { success: true, message: res.data.message };
   } catch (error) {
-    console.error('Update profile error:', error);
+    console.error('Redux updateProfile error:', error);
+    console.error('Error response:', error.response?.data);
+    console.error('Error status:', error.response?.status);
     
-    dispatch({
-      type: AUTH_FAILURE,
-      payload: error.response?.data?.message || 'Failed to update profile' 
-    });
+    if (error.response?.status === 401) {
+      // Token is invalid or expired, logout user
+      console.log('Authentication failed, logging out user');
+      dispatch(logout());
+    } else {
+      dispatch({
+        type: AUTH_FAILURE,
+        payload: error.response?.data?.message || 'Failed to update profile' 
+      });
+    }
     
     return { 
       success: false, 
