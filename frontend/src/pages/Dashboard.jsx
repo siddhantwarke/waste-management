@@ -13,6 +13,9 @@ const Dashboard = ({ auth }) => {
   const routeLocation = useLocation();
   const { user } = auth;
   const [nearbyCollectors, setNearbyCollectors] = useState([]);
+  const [allCollectors, setAllCollectors] = useState([]);
+  const [filteredCollectors, setFilteredCollectors] = useState([]);
+  const [selectedCity, setSelectedCity] = useState('');
   const [wasteRequests, setWasteRequests] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +51,47 @@ const Dashboard = ({ auth }) => {
         .finally(() => setLoading(false));
     }
   }, [refreshTrigger, user]);
+
+  // Effect to filter collectors when selectedCity changes
+  useEffect(() => {
+    if (selectedCity && allCollectors.length > 0) {
+      const filtered = filterCollectorsByCity(selectedCity, allCollectors);
+      setNearbyCollectors(filtered);
+    } else if (!selectedCity) {
+      setNearbyCollectors([]);
+    }
+  }, [selectedCity, allCollectors]);
+
+  // Helper function to load all collectors
+  const loadAllCollectors = async () => {
+    try {
+      const collectorsResponse = await api.get('/auth/collectors');
+      if (collectorsResponse.data && collectorsResponse.data.success) {
+        const collectors = collectorsResponse.data.collectors || [];
+        setAllCollectors(collectors);
+        return collectors;
+      }
+      return [];
+    } catch (error) {
+      console.error('Failed to fetch all collectors:', error);
+      setAllCollectors([]);
+      return [];
+    }
+  };
+
+  // Helper function to filter collectors by city (case insensitive)
+  const filterCollectorsByCity = (city, collectors = allCollectors) => {
+    if (!city || !city.trim()) {
+      return [];
+    }
+    
+    const cityLower = city.toLowerCase().trim();
+    const filtered = collectors.filter(collector => 
+      collector.city && collector.city.toLowerCase().trim() === cityLower
+    );
+    
+    return filtered;
+  };
 
   const initializeDashboard = async () => {
     try {
@@ -104,23 +148,14 @@ const Dashboard = ({ auth }) => {
           wasteRequestsData = [];
         }
         
-        // Then, try to get nearby collectors by city (for customers)
-        let collectorsData = [];
-        if (user.city) {
-          try {
-            const collectorsResponse = await api.get(`/auth/collectors/${encodeURIComponent(user.city)}`);
-            if (collectorsResponse.data && collectorsResponse.data.success) {
-              collectorsData = collectorsResponse.data.collectors || [];
-            }
-          } catch (error) {
-            console.error('Failed to fetch collectors by city:', error);
-            // Don't show error toast for collectors as it's not critical data
-            collectorsData = [];
-          }
-        }
+        // Load all collectors
+        const allCollectorsData = await loadAllCollectors();
+        
+        // Don't filter collectors initially - only show them after a new request is created
+        // Note: Don't reset selectedCity here as it might be set from a recent request
+        setNearbyCollectors([]);
         
         // Always set the state, even if arrays are empty
-        setNearbyCollectors(collectorsData);
         setWasteRequests(wasteRequestsData);
         
       } else if (user.role === 'collector') {
@@ -159,9 +194,11 @@ const Dashboard = ({ auth }) => {
       let endpoint;
       let data = {};
       
-      // Use specific endpoints for accept, reject, and complete actions
-      if (newStatus === 'assigned' || newStatus === 'in_progress') {
+      // Use specific endpoints for different actions
+      if (newStatus === 'assigned') {
         endpoint = `/waste/requests/${requestId}/accept`;
+      } else if (newStatus === 'in_progress') {
+        endpoint = `/waste/requests/${requestId}/start`;
       } else if (newStatus === 'cancelled') {
         endpoint = `/waste/requests/${requestId}/reject`;
       } else if (newStatus === 'completed') {
@@ -196,6 +233,10 @@ const Dashboard = ({ auth }) => {
       .min(10, 'Pickup address must be at least 10 characters')
       .max(500, 'Pickup address must not exceed 500 characters')
       .required('Pickup address is required'),
+    pickup_city: Yup.string()
+      .min(2, 'City must be at least 2 characters')
+      .max(100, 'City must not exceed 100 characters')
+      .required('Pickup city is required'),
     pickup_date: Yup.date()
       .min(new Date(), 'Pickup date must be today or later')
       .required('Pickup date is required'),
@@ -206,9 +247,52 @@ const Dashboard = ({ auth }) => {
       .max(1000, 'Special instructions must not exceed 1000 characters')
   });
 
-  // Handle opening booking modal
-  const handleBookCollector = (collector) => {
-    setSelectedCollector(collector);
+  // Handle booking a specific collector to the most recent request
+  const handleBookCollector = async (collector) => {
+    try {
+      // Find the most recent request (should be pending and without a collector)
+      const recentRequest = wasteRequests
+        .filter(req => req.status === 'pending' && !req.collector_id)
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+
+      if (!recentRequest) {
+        toast.error('No recent unassigned request found. Please create a new request first.');
+        return;
+      }
+
+      console.log('Assigning collector', collector.id, 'to request', recentRequest.id);
+
+      // Update the request to assign the collector using the new endpoint
+      const response = await api.put(`/waste/requests/${recentRequest.id}/assign`, {
+        collector_id: collector.id
+      });
+
+      if (response.data.success) {
+        toast.success(`Successfully booked ${collector.first_name} ${collector.last_name} for your request!`);
+        
+        // Clear the collectors list and reset city selection
+        setFilteredCollectors([]);
+        setNearbyCollectors([]);
+        setSelectedCity('');
+        
+        // Refresh dashboard data to show the updated request
+        setRefreshTrigger(prev => prev + 1);
+      } else {
+        toast.error(response.data.message || 'Failed to assign collector');
+      }
+    } catch (error) {
+      console.error('Failed to book collector:', error);
+      if (error.response?.data?.message) {
+        toast.error(error.response.data.message);
+      } else {
+        toast.error('Failed to book collector. Please try again.');
+      }
+    }
+  };
+
+  // Handle opening booking modal for new request
+  const handleOpenNewRequestModal = () => {
+    setSelectedCollector(null);
     setShowBookingModal(true);
   };
 
@@ -217,19 +301,27 @@ const Dashboard = ({ auth }) => {
     try {
       const bookingData = {
         ...values,
-        collector_id: selectedCollector.id,
+        collector_id: null, // Always create as general request
         status: 'pending'
       };
 
       const response = await api.post('/waste/requests', bookingData);
       
       if (response.data.success) {
-        toast.success(`Booking request sent to ${selectedCollector.first_name} ${selectedCollector.last_name}!`);
+        toast.success(`Booking request created for ${values.pickup_city}!`);
         
         // Close modal and reset form
         setShowBookingModal(false);
         setSelectedCollector(null);
         resetForm();
+        
+        // Ensure collectors are loaded before setting the city
+        if (allCollectors.length === 0) {
+          await loadAllCollectors();
+        }
+        
+        // Update selected city - useEffect will handle filtering
+        setSelectedCity(values.pickup_city);
         
         // Refresh dashboard data
         setRefreshTrigger(prev => prev + 1);
@@ -309,12 +401,39 @@ const Dashboard = ({ auth }) => {
           </Col>
         </Row>
       )}
+
+      {/* Create New Request Section */}
+      <Row className="mb-4">
+        <Col>
+          <Card className="shadow-sm border-success">
+            <Card.Body className="text-center py-4">
+              <div className="mb-3">
+                <i className="fas fa-plus-circle fa-3x text-success"></i>
+              </div>
+              <h4 className="text-success mb-2">Create a New Request for Booking</h4>
+              <p className="text-muted mb-4">
+                Start a new waste collection request by specifying your pickup details and city. 
+                We'll show you available collectors in your specified area.
+              </p>
+              <Button 
+                variant="success" 
+                size="lg"
+                onClick={handleOpenNewRequestModal}
+                className="px-4"
+              >
+                <i className="fas fa-plus me-2"></i>
+                Create New Request
+              </Button>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
       
       {/* Status Information */}
       <Row className="mb-4">
         <Col>
           <Card className="shadow-sm">
-            <Card.Header className="bg-info text-white">
+            <Card.Header className="bg-success text-white">
               <h5 className="mb-0">
                 <i className="fas fa-info-circle me-2"></i>
                 Request Status Meanings
@@ -362,38 +481,59 @@ const Dashboard = ({ auth }) => {
       <Row className="mb-5">
         <Col>
           <Card className="shadow-sm">
-            <Card.Header className="bg-primary text-white d-flex justify-content-between align-items-center">
+            <Card.Header className="bg-success text-white d-flex justify-content-between align-items-center">
               <h5 className="mb-0">
                 <i className="fas fa-tasks me-2"></i>
                 Current Waste Requests
               </h5>
-              <Button 
-                variant="light" 
-                size="sm" 
-                onClick={() => setRefreshTrigger(prev => prev + 1)}
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <Spinner animation="border" size="sm" className="me-1" />
-                    Loading...
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-sync-alt me-1"></i>
-                    Refresh
-                  </>
-                )}
-              </Button>
+              <div className="d-flex gap-2">
+                <Button 
+                  variant="success" 
+                  size="sm" 
+                  onClick={handleOpenNewRequestModal}
+                >
+                  <i className="fas fa-plus me-1"></i>
+                  New Request
+                </Button>
+                <Button 
+                  variant="light" 
+                  size="sm" 
+                  onClick={() => setRefreshTrigger(prev => prev + 1)}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-1" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-sync-alt me-1"></i>
+                      Refresh
+                    </>
+                  )}
+                </Button>
+              </div>
             </Card.Header>
             <Card.Body>
               {wasteRequests.length === 0 ? (
                 <div className="text-center py-4">
                   <i className="fas fa-inbox fa-3x text-muted mb-3"></i>
-                  <p className="text-muted">No active waste requests. Book a collector below to create your first request!</p>
-                  <small className="text-muted">
-                    Scroll down to see available collectors in your area and book directly with them.
-                  </small>
+                  <p className="text-muted">No active waste requests. Create a new request to get started!</p>
+                  <Button 
+                    variant="success" 
+                    size="lg"
+                    onClick={handleOpenNewRequestModal}
+                    className="mt-2"
+                  >
+                    <i className="fas fa-plus-circle me-2"></i>
+                    Create New Request
+                  </Button>
+                  <div className="mt-3">
+                    <small className="text-muted">
+                      You can specify any city when creating a request, and we'll show available collectors for that area.
+                    </small>
+                  </div>
                 </div>
               ) : (
                 <Table responsive striped hover>
@@ -469,38 +609,64 @@ const Dashboard = ({ auth }) => {
         </Col>
       </Row>
 
-      {/* Nearby Collectors */}
+      {/* Available Collectors */}
       <Row>
         <Col>
           <Card className="shadow-sm">
             <Card.Header className="bg-success text-white">
               <h5 className="mb-0">
                 <i className="fas fa-users me-2"></i>
-                Available Waste Collectors Nearby
+                Available Waste Collectors
+                {selectedCity && ` in ${selectedCity}`}
               </h5>
             </Card.Header>
             <Card.Body>
-              {nearbyCollectors.length === 0 ? (
+              {!selectedCity ? (
+                <div className="text-center py-4">
+                  <i className="fas fa-info-circle fa-3x text-muted mb-3"></i>
+                  <p className="text-muted">
+                    Create a new request to see available collectors for your specified city.
+                  </p>
+                  <Button 
+                    variant="success" 
+                    onClick={handleOpenNewRequestModal}
+                  >
+                    <i className="fas fa-plus me-2"></i>
+                    Create Your First Request
+                  </Button>
+                </div>
+              ) : nearbyCollectors.length === 0 ? (
                 <div className="text-center py-4">
                   <i className="fas fa-users fa-3x text-muted mb-3"></i>
                   <p className="text-muted">
-                    {user && user.city ? 
-                      `No collectors found in ${user.city}. Check back later or contact support.` :
-                      'Please update your profile with your city information to see available collectors.'
+                    {filteredCollectors.length === 0 ? 
+                      `No collectors available in ${selectedCity}. Create a new request for a different city.` :
+                      `All collectors have been booked. Create a new request for more options or try a different city.`
                     }
                   </p>
-                  {!user?.city && (
-                    <Button variant="success" onClick={() => navigate('/profile')}>
-                      Update Profile
-                    </Button>
-                  )}
+                  <Button 
+                    variant="success" 
+                    onClick={handleOpenNewRequestModal}
+                  >
+                    <i className="fas fa-plus me-2"></i>
+                    Create New Request
+                  </Button>
                 </div>
               ) : (
                 <div>
-                  <div className="mb-3">
+                  <div className="mb-3 d-flex justify-content-between align-items-center">
                     <small className="text-muted">
-                      Showing collectors available in {user.city}, {user.state}
+                      Showing {nearbyCollectors.length} collector(s) available in {selectedCity}. 
+                      These collectors can respond to your general requests.
                     </small>
+                    <Button 
+                      variant="outline-success" 
+                      size="sm"
+                      onClick={handleOpenNewRequestModal}
+                    >
+                      <i className="fas fa-plus me-1"></i>
+                      New Request
+                    </Button>
                   </div>
                   <Table responsive striped hover>
                     <thead>
@@ -614,7 +780,7 @@ const Dashboard = ({ auth }) => {
               <Card.Text>
                 Find nearby waste collection requests in your area.
               </Card.Text>
-              <Button variant="primary" onClick={() => toast.info('Auto-refreshing...')}>
+              <Button variant="success" onClick={() => toast.info('Auto-refreshing...')}>
                 Refresh
               </Button>
             </Card.Body>
@@ -718,7 +884,7 @@ const Dashboard = ({ auth }) => {
                             <Button 
                               size="sm" 
                               variant="success"
-                              onClick={() => handleRequestStatusUpdate(request.id, 'in_progress')}
+                              onClick={() => handleRequestStatusUpdate(request.id, 'assigned')}
                             >
                               Accept
                             </Button>
@@ -745,7 +911,7 @@ const Dashboard = ({ auth }) => {
       <Row>
         <Col>
           <Card className="shadow-sm">
-            <Card.Header className="bg-info text-white">
+            <Card.Header className="bg-success text-white">
               <h5 className="mb-0">
                 <i className="fas fa-tasks me-2"></i>
                 My Assigned Requests
@@ -793,7 +959,7 @@ const Dashboard = ({ auth }) => {
                           {request.status === 'assigned' && (
                             <Button 
                               size="sm" 
-                              variant="primary"
+                              variant="success"
                               onClick={() => handleRequestStatusUpdate(request.id, 'in_progress')}
                             >
                               Start Collection
@@ -831,7 +997,7 @@ const Dashboard = ({ auth }) => {
     return (
       <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
         <div className="text-center">
-          <Spinner animation="border" variant="primary" className="mb-3" />
+          <Spinner animation="border" variant="success" className="mb-3" />
           <p>Loading dashboard...</p>
         </div>
       </Container>
@@ -855,7 +1021,7 @@ const Dashboard = ({ auth }) => {
       {/* Booking Modal */}
       <Modal show={showBookingModal} onHide={() => setShowBookingModal(false)} size="lg">
         <Modal.Header closeButton>
-          <Modal.Title>Request Booking with {selectedCollector?.first_name} {selectedCollector?.last_name}</Modal.Title>
+          <Modal.Title>Create New Waste Collection Request</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Formik
@@ -863,6 +1029,7 @@ const Dashboard = ({ auth }) => {
               waste_type: '',
               quantity: '',
               pickup_address: '',
+              pickup_city: selectedCity || user?.city || '',
               pickup_date: '',
               pickup_time: '',
               special_instructions: ''
@@ -877,7 +1044,8 @@ const Dashboard = ({ auth }) => {
               handleSubmit, 
               isSubmitting, 
               touched, 
-              errors 
+              errors,
+              setFieldValue 
             }) => (
               <Form noValidate onSubmit={handleSubmit}>
                 <Form.Group className="mb-3">
@@ -934,16 +1102,24 @@ const Dashboard = ({ auth }) => {
                 </Form.Group>
                 
                 <Form.Group className="mb-3">
-                  <Form.Label>City</Form.Label>
+                  <Form.Label>Pickup City</Form.Label>
                   <Form.Control
                     type="text"
-                    value={user?.city || ''}
-                    readOnly
-                    className="bg-light"
-                    placeholder="City not specified in profile"
+                    name="pickup_city"
+                    value={values.pickup_city}
+                    onChange={(e) => {
+                      const city = e.target.value;
+                      setFieldValue('pickup_city', city);
+                    }}
+                    onBlur={handleBlur}
+                    isInvalid={touched.pickup_city && !!errors.pickup_city}
+                    placeholder="Enter the city for pickup"
                   />
+                  <Form.Control.Feedback type="invalid">
+                    {errors.pickup_city}
+                  </Form.Control.Feedback>
                   <Form.Text className="text-muted">
-                    Your registered city (readonly). Update your profile to change this.
+                    After submitting your request, available collectors in this city will be shown in the dashboard.
                   </Form.Text>
                 </Form.Group>
                 
@@ -1003,7 +1179,7 @@ const Dashboard = ({ auth }) => {
                     Cancel
                   </Button>
                   <Button 
-                    variant="primary" 
+                    variant="success" 
                     type="submit" 
                     disabled={isSubmitting}
                   >

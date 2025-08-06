@@ -213,14 +213,14 @@ class WasteRequest {
   }
 
   static async assignCollector(requestId, collectorId) {
-    const query = 'UPDATE waste_requests SET collector_id = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?';
+    const query = 'UPDATE waste_requests SET collector_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ? AND collector_id IS NULL';
     
     try {
       const db = await database.getDb();
       if (!db) throw new Error('Database not initialized');
       
       const stmt = db.prepare(query);
-      const changes = stmt.run([collectorId, 'assigned', requestId, 'pending']);
+      const changes = stmt.run([collectorId, requestId, 'pending']);
       stmt.free();
       
       database.saveDatabase();

@@ -12,12 +12,12 @@ const Navigation = ({ auth, logout }) => {
   };
 
   return (
-    <Navbar bg="primary" variant="dark" expand="lg" sticky="top">
+    <Navbar bg="success" variant="dark" expand="lg" sticky="top">
       <Container>
         <LinkContainer to="/">
           <Navbar.Brand className="fw-bold">
             <i className="fas fa-recycle me-2"></i>
-            WasteManager
+            🗂️ WasteHub Pro
           </Navbar.Brand>
         </LinkContainer>
         

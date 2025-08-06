@@ -81,7 +81,7 @@ const createWasteRequest = async (req, res) => {
       pickup_date,
       pickup_time,
       special_instructions: special_instructions || null,
-      status: collector_id ? 'pending' : 'pending' // If collector specified, status is 'pending' for collector to accept/reject
+      status: 'pending' // Always start as pending
     };
 
     const newWasteRequest = await WasteRequest.create(wasteRequestData);
@@ -172,8 +172,8 @@ const acceptRequest = async (req, res) => {
       });
     }
 
-    // Update status to in_progress
-    const updatedRequest = await WasteRequest.updateRequestStatus(requestId, 'in_progress');
+    // Update status to assigned (accepted)
+    const updatedRequest = await WasteRequest.updateRequestStatus(requestId, 'assigned');
 
     res.json({
       success: true,
@@ -355,6 +355,112 @@ const updateUserLocation = async (req, res) => {
   }
 };
 
+// Assign collector to request (for customers)
+const assignCollectorToRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { collector_id } = req.body;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    // Only customers can assign collectors to their own requests
+    if (userRole !== 'customer') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only customers can assign collectors to requests'
+      });
+    }
+
+    if (!collector_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Collector ID is required'
+      });
+    }
+
+    // Verify the request belongs to the customer
+    const request = await WasteRequest.getById(id);
+    if (!request || request.customer_id !== userId) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found or unauthorized'
+      });
+    }
+
+    // Verify the request is still pending (not yet assigned to any collector)
+    if (request.status !== 'pending' || request.collector_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Can only assign collectors to pending requests without collectors'
+      });
+    }
+
+    // Assign the collector and update status
+    await WasteRequest.assignCollector(id, collector_id);
+    
+    // Get the updated request to return
+    const updatedRequest = await WasteRequest.getById(id);
+
+    res.json({
+      success: true,
+      data: updatedRequest,
+      message: 'Collector assigned successfully'
+    });
+  } catch (error) {
+    console.error('Assign collector error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while assigning collector'
+    });
+  }
+};
+
+// Start collection (for collectors) - changes status from assigned to in_progress
+const startCollection = async (req, res) => {
+  try {
+    const requestId = req.params.id;
+    const collectorId = req.user.id;
+
+    // Check if request exists and is assigned to this collector
+    const request = await WasteRequest.getById(requestId);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found'
+      });
+    }
+
+    if (request.collector_id !== collectorId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Request is not assigned to you'
+      });
+    }
+
+    if (request.status !== 'assigned') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot start collection. Current status: ${request.status}`
+      });
+    }
+
+    // Update status to in_progress
+    const updatedRequest = await WasteRequest.updateRequestStatus(requestId, 'in_progress');
+
+    res.json({
+      success: true,
+      data: updatedRequest,
+      message: 'Collection started successfully'
+    });
+  } catch (error) {
+    console.error('Start collection error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to start collection'
+    });
+  }
+};
+
 module.exports = {
   getNearbyCollectors,
   getUserWasteRequests,
@@ -365,5 +471,7 @@ module.exports = {
   getPendingRequests,
   getMyAssignedRequests,
   updateUserLocation,
-  rejectRequest
+  rejectRequest,
+  assignCollectorToRequest,
+  startCollection
 };

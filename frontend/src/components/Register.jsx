@@ -7,6 +7,7 @@ import * as Yup from 'yup';
 import { register, clearAuthError } from '../redux/actions/authActions';
 import { toast } from 'react-toastify';
 import { WASTE_TYPES } from '../utils/wasteTypes';
+import './Login.css'; // Reuse the same CSS
 
 const Register = ({ auth, register, clearAuthError }) => {
   const navigate = useNavigate();
@@ -127,15 +128,17 @@ const Register = ({ auth, register, clearAuthError }) => {
   }, [auth.isAuthenticated, navigate, auth.error, clearAuthError]);
 
   return (
-    <Container className="py-5">
-      <Row className="justify-content-center">
-        <Col md={8} lg={6}>
-          <Card className="shadow">
-            <Card.Body className="p-4">
-              <div className="text-center mb-4">
-                <h2 className="fw-bold text-primary">Create Account</h2>
-                <p className="text-muted">Join our waste management community</p>
-              </div>
+    <div className="login-page">
+      <Container>
+        <Row className="justify-content-center">
+          <Col md={8} lg={6}>
+            <Card className="shadow-lg">
+              <Card.Body>
+                <div className="text-center mb-4">
+                  <h2 className="fw-bold">🗂️ WasteHub Pro</h2>
+                  <h3 className="fw-bold text-success mb-2">Create Account</h3>
+                  <p className="text-muted">Join our comprehensive waste management platform</p>
+                </div>
 
               {auth.error && (
                 <Alert variant="danger" className="mb-3">
@@ -469,7 +472,7 @@ const Register = ({ auth, register, clearAuthError }) => {
 
                     <div className="d-grid gap-2">
                       <Button
-                        variant="primary"
+                        variant="success"
                         type="submit"
                         size="lg"
                         disabled={isSubmitting}
@@ -509,6 +512,7 @@ const Register = ({ auth, register, clearAuthError }) => {
         </Col>
       </Row>
     </Container>
+    </div>
   );
 };
 

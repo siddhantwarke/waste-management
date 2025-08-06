@@ -6,6 +6,7 @@ import { Formik } from 'formik';
 import * as Yup from 'yup';
 import { login, clearAuthError } from '../redux/actions/authActions';
 import { toast } from 'react-toastify';
+import './Login.css';
 
 const Login = ({ auth, login, clearAuthError }) => {
   const navigate = useNavigate();
@@ -48,15 +49,17 @@ const Login = ({ auth, login, clearAuthError }) => {
   }, [auth.isAuthenticated, navigate, auth.error, clearAuthError]);
 
   return (
-    <Container className="py-5">
-      <Row className="justify-content-center">
-        <Col md={6} lg={5}>
-          <Card className="shadow">
-            <Card.Body className="p-4">
-              <div className="text-center mb-4">
-                <h2 className="fw-bold text-primary">Welcome Back</h2>
-                <p className="text-muted">Sign in to your account</p>
-              </div>
+    <div className="login-page">
+      <Container>
+        <Row className="justify-content-center">
+          <Col md={6} lg={5}>
+            <Card className="shadow-lg">
+              <Card.Body>
+                <div className="text-center mb-4">
+                  <h2 className="fw-bold">🗂️ WasteHub Pro</h2>
+                  <h3 className="fw-bold text-success mb-2">Welcome Back</h3>
+                  <p className="text-muted">Sign in to manage your waste collection services</p>
+                </div>
 
               {auth.error && (
                 <Alert variant="danger" className="mb-3">
@@ -123,7 +126,7 @@ const Login = ({ auth, login, clearAuthError }) => {
                     </Form.Group>
 
                     <Button
-                      variant="primary"
+                      variant="success"
                       type="submit"
                       className="w-100 mb-3"
                       disabled={isSubmitting || auth.loading}
@@ -161,6 +164,7 @@ const Login = ({ auth, login, clearAuthError }) => {
         </Col>
       </Row>
     </Container>
+    </div>
   );
 };
 

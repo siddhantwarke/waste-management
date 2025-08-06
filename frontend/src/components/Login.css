@@ -1,0 +1,79 @@
+/* Login Page Background Styles */
+.login-page {
+  min-height: 100vh;
+  background: linear-gradient(rgba(46, 125, 50, 0.85), rgba(27, 94, 32, 0.85)),
+              url('https://images.unsplash.com/photo-1558618666-fcd25c85cd64?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  display: flex;
+  align-items: center;
+  padding: 2rem 0;
+}
+
+.login-page .card {
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.95);
+  border: none;
+  border-radius: 15px;
+  box-shadow: 0 8px 32px rgba(46, 125, 50, 0.3);
+}
+
+.login-page .card-body {
+  padding: 3rem 2.5rem;
+}
+
+.login-page h2 {
+  color: #2E7D32;
+  margin-bottom: 0.5rem;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+}
+
+.login-page h3 {
+  color: #2c3e50;
+  margin-bottom: 0.5rem;
+}
+
+.login-page .text-muted {
+  color: #6c757d !important;
+  margin-bottom: 2rem;
+}
+
+.login-page .form-control {
+  border-radius: 10px;
+  border: 2px solid #e9ecef;
+  padding: 12px 15px;
+  transition: all 0.3s ease;
+}
+
+.login-page .form-control:focus {
+  border-color: #2E7D32;
+  box-shadow: 0 0 0 0.2rem rgba(46, 125, 50, 0.25);
+}
+
+.login-page .btn-primary {
+  background: linear-gradient(45deg, #2E7D32, #4CAF50);
+  border: none;
+  border-radius: 10px;
+  padding: 12px;
+  font-weight: 600;
+  transition: transform 0.2s ease;
+}
+
+.login-page .btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(46, 125, 50, 0.4);
+  background: linear-gradient(45deg, #4CAF50, #2E7D32);
+}
+
+@media (max-width: 768px) {
+  .login-page {
+    background-attachment: scroll;
+    padding: 1rem 0;
+  }
+  
+  .login-page .card-body {
+    padding: 2rem 1.5rem;
+  }
+}

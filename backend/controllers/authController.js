@@ -337,6 +337,39 @@ const verifyToken = async (req, res) => {
   }
 };
 
+// Get all collectors (without city filtering)
+const getAllCollectors = async (req, res) => {
+  try {
+    console.log('Getting all collectors');
+    
+    // Get all collectors
+    const allCollectors = await User.getAllByRole('collector');
+    const collectors = [];
+    
+    for (const collector of allCollectors) {
+      // Get full profile including prices
+      const fullProfile = await User.findById(collector.id);
+      if (fullProfile) {
+        collectors.push(fullProfile);
+      }
+    }
+    
+    console.log(`Found ${collectors.length} total collectors`);
+
+    res.status(200).json({
+      success: true,
+      collectors,
+      message: `Found ${collectors.length} collectors`
+    });
+  } catch (error) {
+    console.error('Get all collectors error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching collectors'
+    });
+  }
+};
+
 // Get collectors by city
 const getCollectorsByCity = async (req, res) => {
   try {
@@ -390,5 +423,6 @@ module.exports = {
   getProfile,
   updateProfile,
   verifyToken,
+  getAllCollectors,
   getCollectorsByCity
 };

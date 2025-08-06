@@ -10,7 +10,9 @@ const {
   completeRequest,
   getPendingRequests,
   getMyAssignedRequests,
-  updateUserLocation
+  updateUserLocation,
+  assignCollectorToRequest,
+  startCollection
 } = require('../controllers/wasteController');
 const { protect, authorize } = require('../middleware/auth');
 const { validateWasteRequest, handleValidationErrors } = require('../middleware/validation');
@@ -60,9 +62,19 @@ router.put('/requests/:id/reject', protect, authorize('collector'), rejectReques
 // @access  Private (Collector)
 router.put('/requests/:id/complete', protect, authorize('collector'), completeRequest);
 
+// @route   PUT /api/waste/requests/:id/start
+// @desc    Start collection (change status from assigned to in_progress)
+// @access  Private (Collector)
+router.put('/requests/:id/start', protect, authorize('collector'), startCollection);
+
 // @route   PUT /api/waste/location
 // @desc    Update user location
 // @access  Private
 router.put('/location', protect, updateUserLocation);
+
+// @route   PUT /api/waste/requests/:id/assign
+// @desc    Assign collector to request (for customers)
+// @access  Private (Customer)
+router.put('/requests/:id/assign', protect, authorize('customer'), assignCollectorToRequest);
 
 module.exports = router;

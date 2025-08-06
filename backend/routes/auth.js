@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, getProfile, updateProfile, verifyToken, getCollectorsByCity } = require('../controllers/authController');
+const { register, login, getProfile, updateProfile, verifyToken, getAllCollectors, getCollectorsByCity } = require('../controllers/authController');
 const { validateRegister, validateLogin, validateProfileUpdate, handleValidationErrors } = require('../middleware/validation');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -28,6 +28,11 @@ router.put('/profile', authMiddleware, validateProfileUpdate, handleValidationEr
 // @desc    Verify JWT token
 // @access  Private
 router.get('/verify', authMiddleware, verifyToken);
+
+// @route   GET /api/auth/collectors
+// @desc    Get all collectors
+// @access  Private
+router.get('/collectors', authMiddleware, getAllCollectors);
 
 // @route   GET /api/auth/collectors/:city
 // @desc    Get collectors by city
