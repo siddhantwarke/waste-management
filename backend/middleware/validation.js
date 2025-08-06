@@ -93,13 +93,6 @@ const validateRegister = [
     .isFloat({ min: 0 })
     .withMessage('Plastic price must be a positive number'),
   
-  body('organic_price')
-    .if((value, { req }) => req.body.role === 'collector')
-    .notEmpty()
-    .withMessage('Organic price is required for collectors')
-    .isFloat({ min: 0 })
-    .withMessage('Organic price must be a positive number'),
-  
   body('paper_price')
     .if((value, { req }) => req.body.role === 'collector')
     .notEmpty()
@@ -119,21 +112,7 @@ const validateRegister = [
     .notEmpty()
     .withMessage('Glass price is required for collectors')
     .isFloat({ min: 0 })
-    .withMessage('Glass price must be a positive number'),
-  
-  body('hazardous_price')
-    .if((value, { req }) => req.body.role === 'collector')
-    .notEmpty()
-    .withMessage('Hazardous price is required for collectors')
-    .isFloat({ min: 0 })
-    .withMessage('Hazardous price must be a positive number'),
-  
-  body('mixed_price')
-    .if((value, { req }) => req.body.role === 'collector')
-    .notEmpty()
-    .withMessage('Mixed price is required for collectors')
-    .isFloat({ min: 0 })
-    .withMessage('Mixed price must be a positive number')
+    .withMessage('Glass price must be a positive number')
 ];
 
 // Validation rules for user login
@@ -148,25 +127,45 @@ const validateLogin = [
     .withMessage('Password is required')
 ];
 
-// Validation rules for waste request creation
+// Validation rules for waste request creation (simplified for debugging)
 const validateWasteRequest = [
-  body('waste_type')
-    .notEmpty()
-    .withMessage('Waste type is required')
-    .isIn(['e-waste', 'plastic', 'organic', 'paper', 'metal', 'glass', 'hazardous', 'mixed'])
-    .withMessage('Please select a valid waste type'),
-  
-  body('quantity')
-    .notEmpty()
-    .withMessage('Quantity is required')
-    .isNumeric({ min: 0.1 })
-    .withMessage('Quantity must be a positive number'),
-  
   body('pickup_address')
     .notEmpty()
-    .withMessage('Pickup address is required')
-    .isLength({ min: 10, max: 500 })
-    .withMessage('Pickup address must be between 10 and 500 characters'),
+    .withMessage('Pickup address is required'),
+  
+  body('pickup_city')
+    .notEmpty()
+    .withMessage('Pickup city is required'),
+  
+  body('pickup_date')
+    .notEmpty()
+    .withMessage('Pickup date is required'),
+  
+  body('pickup_time')
+    .notEmpty()
+    .withMessage('Pickup time preference is required')
+    .isIn(['morning', 'afternoon', 'evening', 'flexible'])
+    .withMessage('Please select a valid pickup time preference'),
+  
+  // Simplified waste validation - allow either format
+  body().custom((value) => {
+    console.log('🔍 Validating request body:', JSON.stringify(value, null, 2));
+    
+    const hasWasteItems = value.waste_items && Array.isArray(value.waste_items) && value.waste_items.length > 0;
+    const hasSingleWaste = value.waste_type && value.quantity;
+    
+    console.log('📊 Validation check:');
+    console.log('  - hasWasteItems:', hasWasteItems);
+    console.log('  - hasSingleWaste:', hasSingleWaste);
+    
+    if (!hasWasteItems && !hasSingleWaste) {
+      console.log('❌ Validation failed: No waste data provided');
+      throw new Error('Either waste_items array or waste_type and quantity must be provided');
+    }
+    
+    console.log('✅ Validation passed');
+    return true;
+  }),
   
   body('pickup_date')
     .notEmpty()
@@ -260,11 +259,6 @@ const validateProfileUpdate = [
     .isFloat({ min: 0 })
     .withMessage('Plastic price must be a positive number'),
   
-  body('organic_price')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('Organic price must be a positive number'),
-  
   body('paper_price')
     .optional()
     .isFloat({ min: 0 })
@@ -278,17 +272,7 @@ const validateProfileUpdate = [
   body('glass_price')
     .optional()
     .isFloat({ min: 0 })
-    .withMessage('Glass price must be a positive number'),
-  
-  body('hazardous_price')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('Hazardous price must be a positive number'),
-  
-  body('mixed_price')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('Mixed price must be a positive number')
+    .withMessage('Glass price must be a positive number')
 ];
 
 // Middleware to handle validation results

@@ -62,12 +62,9 @@ class DatabaseManager {
         collector_group_name VARCHAR(100),
         e_waste_price DECIMAL(10,2),
         plastic_price DECIMAL(10,2),
-        organic_price DECIMAL(10,2),
         paper_price DECIMAL(10,2),
         metal_price DECIMAL(10,2),
         glass_price DECIMAL(10,2),
-        hazardous_price DECIMAL(10,2),
-        mixed_price DECIMAL(10,2),
         latitude DECIMAL(10, 8),
         longitude DECIMAL(11, 8),
         service_radius DECIMAL(5,2) DEFAULT 10.0,
@@ -78,15 +75,15 @@ class DatabaseManager {
       )
     `;
 
-    // Waste collection requests table
+    // Waste collection requests table (main request)
     const createWasteRequestsTable = `
       CREATE TABLE IF NOT EXISTS waste_requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_id VARCHAR(50) UNIQUE NOT NULL,
         customer_id INTEGER NOT NULL,
         collector_id INTEGER,
-        waste_type VARCHAR(50) NOT NULL,
-        quantity DECIMAL(10,2),
         pickup_address TEXT NOT NULL,
+        pickup_city VARCHAR(100) NOT NULL,
         pickup_date DATE,
         pickup_time TIME,
         status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled')),
@@ -98,12 +95,27 @@ class DatabaseManager {
       )
     `;
 
+    // Waste request items table (multiple waste types per request)
+    const createWasteRequestItemsTable = `
+      CREATE TABLE IF NOT EXISTS waste_request_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_id INTEGER NOT NULL,
+        waste_type VARCHAR(50) NOT NULL,
+        quantity DECIMAL(10,2) NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (request_id) REFERENCES waste_requests(id) ON DELETE CASCADE
+      )
+    `;
+
     try {
       this.db.run(createUsersTable);
       console.log('Users table ready');
       
       this.db.run(createWasteRequestsTable);
       console.log('Waste requests table ready');
+      
+      this.db.run(createWasteRequestItemsTable);
+      console.log('Waste request items table ready');
       
       // Add new columns to existing users table if they don't exist
       this.addLocationColumns();
@@ -125,18 +137,15 @@ class DatabaseManager {
         // New waste type price columns
         'ALTER TABLE users ADD COLUMN e_waste_price DECIMAL(10,2)',
         'ALTER TABLE users ADD COLUMN plastic_price DECIMAL(10,2)',
-        'ALTER TABLE users ADD COLUMN organic_price DECIMAL(10,2)',
         'ALTER TABLE users ADD COLUMN paper_price DECIMAL(10,2)',
         'ALTER TABLE users ADD COLUMN metal_price DECIMAL(10,2)',
-        'ALTER TABLE users ADD COLUMN glass_price DECIMAL(10,2)',
-        'ALTER TABLE users ADD COLUMN hazardous_price DECIMAL(10,2)',
-        'ALTER TABLE users ADD COLUMN mixed_price DECIMAL(10,2)'
+        'ALTER TABLE users ADD COLUMN glass_price DECIMAL(10,2)'
       ];
 
       const columnNames = [
         'country', 'state', 'city', 'collector_group_name',
-        'e_waste_price', 'plastic_price', 'organic_price', 'paper_price',
-        'metal_price', 'glass_price', 'hazardous_price', 'mixed_price'
+        'e_waste_price', 'plastic_price', 'paper_price',
+        'metal_price', 'glass_price'
       ];
 
       alterQueries.forEach((query, index) => {

@@ -19,15 +19,6 @@ export const WASTE_TYPES = [
     bgColor: '#0dcaf0'
   },
   { 
-    value: 'organic', 
-    label: 'Organic/Food Waste', 
-    key: 'organic_price',
-    icon: 'fas fa-apple-alt',
-    emoji: '🍎',
-    color: 'success',
-    bgColor: '#198754'
-  },
-  { 
     value: 'paper', 
     label: 'Paper/Cardboard', 
     key: 'paper_price',
@@ -53,24 +44,6 @@ export const WASTE_TYPES = [
     emoji: '🍷',
     color: 'info',
     bgColor: '#6f42c1'
-  },
-  { 
-    value: 'hazardous', 
-    label: 'Hazardous Materials', 
-    key: 'hazardous_price',
-    icon: 'fas fa-exclamation-triangle',
-    emoji: '☢️',
-    color: 'danger',
-    bgColor: '#dc3545'
-  },
-  { 
-    value: 'mixed', 
-    label: 'Mixed Waste', 
-    key: 'mixed_price',
-    icon: 'fas fa-trash-alt',
-    emoji: '🗑️',
-    color: 'primary',
-    bgColor: '#0d6efd'
   }
 ];
 

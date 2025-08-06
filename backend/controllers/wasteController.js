@@ -60,36 +60,89 @@ const getUserWasteRequests = async (req, res) => {
 // Create new waste request
 const createWasteRequest = async (req, res) => {
   try {
+    console.log('🔄 Creating waste request...');
+    console.log('📥 Request body:', JSON.stringify(req.body, null, 2));
+    console.log('👤 User ID:', req.user?.id);
+    
     const userId = req.user.id;
     const {
       collector_id,
-      waste_type,
-      quantity,
       pickup_address,
+      pickup_city,
       pickup_date,
       pickup_time,
-      special_instructions
+      special_instructions,
+      waste_items,  // Array of {waste_type, quantity}
+      // Backward compatibility for old single waste type requests
+      waste_type,
+      quantity
     } = req.body;
+
+    console.log('📋 Extracted data:');
+    console.log('  - waste_items:', waste_items);
+    console.log('  - waste_type:', waste_type);
+    console.log('  - quantity:', quantity);
+
+    // Prepare waste items array
+    let wasteItemsArray = [];
+    
+    if (waste_items && Array.isArray(waste_items) && waste_items.length > 0) {
+      // New multi-waste format
+      wasteItemsArray = waste_items.map(item => ({
+        waste_type: item.waste_type,
+        quantity: parseFloat(item.quantity)
+      }));
+    } else if (waste_type && quantity) {
+      // Backward compatibility for single waste type
+      wasteItemsArray = [{
+        waste_type,
+        quantity: parseFloat(quantity)
+      }];
+    } else {
+      console.log('❌ No valid waste data provided');
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide either waste_items array or waste_type and quantity'
+      });
+    }
+
+    console.log('📦 Prepared waste items array:', wasteItemsArray);
+
+    // Validate waste items
+    if (wasteItemsArray.length === 0) {
+      console.log('❌ Empty waste items array');
+      return res.status(400).json({
+        success: false,
+        message: 'At least one waste item is required'
+      });
+    }
+
+    console.log('✅ Waste items validation passed');
 
     // Create waste request data
     const wasteRequestData = {
       customer_id: userId,
       collector_id: collector_id || null,
-      waste_type,
-      quantity: parseFloat(quantity),
       pickup_address,
+      pickup_city,
       pickup_date,
       pickup_time,
       special_instructions: special_instructions || null,
-      status: 'pending' // Always start as pending
+      status: 'pending', // Always start as pending
+      waste_items: wasteItemsArray
     };
 
     const newWasteRequest = await WasteRequest.create(wasteRequestData);
 
+    const itemCount = wasteItemsArray.length;
+    const totalQuantity = wasteItemsArray.reduce((sum, item) => sum + item.quantity, 0);
+
     res.status(201).json({
       success: true,
       data: newWasteRequest,
-      message: collector_id ? 'Booking request sent to collector successfully' : 'Waste pickup request created successfully'
+      message: collector_id 
+        ? `Booking request sent to collector successfully for ${itemCount} waste type(s), total ${totalQuantity.toFixed(1)} kg` 
+        : `Waste pickup request created successfully for ${itemCount} waste type(s), total ${totalQuantity.toFixed(1)} kg. Request ID: ${newWasteRequest.request_id}`
     });
   } catch (error) {
     console.error('Create waste request error:', error);

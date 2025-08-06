@@ -1,42 +1,47 @@
 const database = require('../config/database');
+const { generateUniqueRequestId } = require('../utils/requestIdGenerator');
 
 class WasteRequest {
   static async create(wasteRequestData) {
     const {
       customer_id,
       collector_id,
-      waste_type,
-      quantity,
       pickup_address,
+      pickup_city,
       pickup_date,
       pickup_time,
       special_instructions,
-      status
+      status,
+      waste_items // Array of {waste_type, quantity}
     } = wasteRequestData;
-    
-    const query = `
-      INSERT INTO waste_requests 
-      (customer_id, collector_id, waste_type, quantity, pickup_address, pickup_date, pickup_time, special_instructions, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
     
     try {
       const db = await database.getDb();
       if (!db) throw new Error('Database not initialized');
       
-      const stmt = db.prepare(query);
-      stmt.run([
+      // Generate unique request ID
+      const request_id = await generateUniqueRequestId(db);
+      
+      // Insert main request
+      const requestQuery = `
+        INSERT INTO waste_requests 
+        (request_id, customer_id, collector_id, pickup_address, pickup_city, pickup_date, pickup_time, special_instructions, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      
+      const requestStmt = db.prepare(requestQuery);
+      requestStmt.run([
+        request_id,
         customer_id,
         collector_id || null,
-        waste_type,
-        quantity,
         pickup_address,
+        pickup_city,
         pickup_date,
         pickup_time,
         special_instructions,
-        status
+        status || 'pending'
       ]);
-      stmt.free();
+      requestStmt.free();
       
       // Get the last inserted row ID
       const lastIdStmt = db.prepare("SELECT last_insert_rowid() as id");
@@ -44,10 +49,29 @@ class WasteRequest {
       const lastId = lastIdStmt.getAsObject().id;
       lastIdStmt.free();
       
+      // Insert waste items
+      if (waste_items && waste_items.length > 0) {
+        const itemQuery = `
+          INSERT INTO waste_request_items (request_id, waste_type, quantity)
+          VALUES (?, ?, ?)
+        `;
+        
+        const itemStmt = db.prepare(itemQuery);
+        for (const item of waste_items) {
+          itemStmt.run([lastId, item.waste_type, item.quantity]);
+        }
+        itemStmt.free();
+      }
+      
       // Save database after insert
       database.saveDatabase();
       
-      return { id: lastId, ...wasteRequestData };
+      return { 
+        id: lastId, 
+        request_id,
+        ...wasteRequestData,
+        waste_items
+      };
     } catch (error) {
       console.error('WasteRequest.create error:', error);
       throw error;
@@ -89,6 +113,31 @@ class WasteRequest {
       while (stmt.step()) {
         stepCount++;
         const row = stmt.getAsObject();
+        
+        // Get waste items for this request
+        const itemsQuery = `
+          SELECT waste_type, quantity 
+          FROM waste_request_items 
+          WHERE request_id = ?
+        `;
+        const itemsStmt = db.prepare(itemsQuery);
+        itemsStmt.bind([row.id]);
+        
+        const wasteItems = [];
+        while (itemsStmt.step()) {
+          wasteItems.push(itemsStmt.getAsObject());
+        }
+        itemsStmt.free();
+        
+        // Add waste items to the row
+        row.waste_items = wasteItems;
+        
+        // For backward compatibility, set waste_type and quantity from first item
+        if (wasteItems.length > 0) {
+          row.waste_type = wasteItems[0].waste_type;
+          row.quantity = wasteItems[0].quantity;
+        }
+        
         console.log(`Row ${stepCount}:`, row);
         results.push(row);
       }

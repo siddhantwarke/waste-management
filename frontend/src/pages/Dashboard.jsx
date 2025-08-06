@@ -7,6 +7,7 @@ import { Formik } from 'formik';
 import * as Yup from 'yup';
 import api from '../services/api';
 import { WASTE_TYPES, getWasteTypeInfo } from '../utils/wasteTypes';
+import '../components/Login.css'; // Import for new styles
 
 const Dashboard = ({ auth }) => {
   const navigate = useNavigate();
@@ -26,6 +27,10 @@ const Dashboard = ({ auth }) => {
   // Booking modal states
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedCollector, setSelectedCollector] = useState(null);
+  
+  // Multiple waste types state
+  const [selectedWasteItems, setSelectedWasteItems] = useState([]);
+  const [tempQuantities, setTempQuantities] = useState({});
 
   useEffect(() => {
     if (user) {
@@ -222,13 +227,6 @@ const Dashboard = ({ auth }) => {
 
   // Booking validation schema
   const bookingValidationSchema = Yup.object({
-    waste_type: Yup.string()
-      .oneOf(WASTE_TYPES.map(type => type.value), 'Please select a valid waste type')
-      .required('Waste type is required'),
-    quantity: Yup.number()
-      .min(0.1, 'Quantity must be at least 0.1 kg')
-      .max(10000, 'Quantity must not exceed 10000 kg')
-      .required('Quantity is required'),
     pickup_address: Yup.string()
       .min(10, 'Pickup address must be at least 10 characters')
       .max(500, 'Pickup address must not exceed 500 characters')
@@ -250,35 +248,54 @@ const Dashboard = ({ auth }) => {
   // Handle booking a specific collector to the most recent request
   const handleBookCollector = async (collector) => {
     try {
-      // Find the most recent request (should be pending and without a collector)
-      const recentRequest = wasteRequests
-        .filter(req => req.status === 'pending' && !req.collector_id)
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+      // Find all pending requests in the selected city that don't have a collector assigned
+      const pendingRequestsInCity = wasteRequests.filter(req => {
+        if (req.status !== 'pending') return false;
+        if (req.collector_id && req.collector_id !== null) return false;
+        if (!req.pickup_city) return false;
+        
+        const reqCity = req.pickup_city.trim().toLowerCase();
+        const selCity = selectedCity ? selectedCity.trim().toLowerCase() : '';
+        
+        return reqCity === selCity;
+      });
 
-      if (!recentRequest) {
-        toast.error('No recent unassigned request found. Please create a new request first.');
+      if (pendingRequestsInCity.length === 0) {
+        toast.error('No pending requests found in this city. Please create a new request first.');
         return;
       }
 
-      console.log('Assigning collector', collector.id, 'to request', recentRequest.id);
+      console.log(`Assigning collector ${collector.id} to ${pendingRequestsInCity.length} request(s)`);
 
-      // Update the request to assign the collector using the new endpoint
-      const response = await api.put(`/waste/requests/${recentRequest.id}/assign`, {
-        collector_id: collector.id
-      });
+      // Assign the collector to all pending requests in the city
+      const assignmentPromises = pendingRequestsInCity.map(request => 
+        api.put(`/waste/requests/${request.id}/assign`, {
+          collector_id: collector.id
+        })
+      );
 
-      if (response.data.success) {
-        toast.success(`Successfully booked ${collector.first_name} ${collector.last_name} for your request!`);
+      const responses = await Promise.all(assignmentPromises);
+      
+      // Check if all assignments were successful
+      const successfulAssignments = responses.filter(response => response.data.success);
+      
+      if (successfulAssignments.length === pendingRequestsInCity.length) {
+        const requestIds = pendingRequestsInCity.map(req => req.request_id).join(', ');
+        toast.success(
+          `Successfully booked ${collector.first_name} ${collector.last_name} for ${successfulAssignments.length} request(s)! ` +
+          `Request ID(s): ${requestIds}`
+        );
         
         // Clear the collectors list and reset city selection
         setFilteredCollectors([]);
         setNearbyCollectors([]);
         setSelectedCity('');
         
-        // Refresh dashboard data to show the updated request
+        // Refresh dashboard data to show the updated requests
         setRefreshTrigger(prev => prev + 1);
       } else {
-        toast.error(response.data.message || 'Failed to assign collector');
+        toast.warning(`Only ${successfulAssignments.length} out of ${pendingRequestsInCity.length} requests were assigned successfully.`);
+        setRefreshTrigger(prev => prev + 1);
       }
     } catch (error) {
       console.error('Failed to book collector:', error);
@@ -299,20 +316,34 @@ const Dashboard = ({ auth }) => {
   // Handle booking submission
   const handleBookingSubmit = async (values, { setSubmitting, resetForm }) => {
     try {
+      // Validate that at least one waste item is selected
+      if (selectedWasteItems.length === 0) {
+        toast.error('Please select at least one waste type');
+        setSubmitting(false);
+        return;
+      }
+
       const bookingData = {
-        ...values,
+        pickup_address: values.pickup_address,
+        pickup_city: values.pickup_city,
+        pickup_date: values.pickup_date,
+        pickup_time: values.pickup_time,
+        special_instructions: values.special_instructions,
         collector_id: null, // Always create as general request
-        status: 'pending'
+        status: 'pending',
+        waste_items: selectedWasteItems // Send multiple waste items
       };
 
       const response = await api.post('/waste/requests', bookingData);
       
       if (response.data.success) {
-        toast.success(`Booking request created for ${values.pickup_city}!`);
+        toast.success(`Booking request created with ${selectedWasteItems.length} waste type(s) for ${values.pickup_city}!`);
         
         // Close modal and reset form
         setShowBookingModal(false);
         setSelectedCollector(null);
+        setSelectedWasteItems([]);
+        setTempQuantities({});
         resetForm();
         
         // Ensure collectors are loaded before setting the city
@@ -338,6 +369,47 @@ const Dashboard = ({ auth }) => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Helper functions for waste item management
+  const addWasteItem = (wasteType) => {
+    const quantity = tempQuantities[wasteType] || 1;
+    if (quantity > 0) {
+      const wasteTypeInfo = getWasteTypeInfo(wasteType);
+      const newItem = {
+        waste_type: wasteType,
+        quantity: parseFloat(quantity),
+        label: wasteTypeInfo.label,
+        emoji: wasteTypeInfo.emoji
+      };
+      
+      // Check if item already exists
+      const existingIndex = selectedWasteItems.findIndex(item => item.waste_type === wasteType);
+      if (existingIndex >= 0) {
+        // Update existing item
+        const updatedItems = [...selectedWasteItems];
+        updatedItems[existingIndex] = newItem;
+        setSelectedWasteItems(updatedItems);
+      } else {
+        // Add new item
+        setSelectedWasteItems([...selectedWasteItems, newItem]);
+      }
+      
+      // Clear temp quantity
+      setTempQuantities(prev => ({ ...prev, [wasteType]: '' }));
+    }
+  };
+
+  const removeWasteItem = (wasteType) => {
+    setSelectedWasteItems(selectedWasteItems.filter(item => item.waste_type !== wasteType));
+  };
+
+  const updateTempQuantity = (wasteType, quantity) => {
+    setTempQuantities(prev => ({ ...prev, [wasteType]: quantity }));
+  };
+
+  const isWasteTypeSelected = (wasteType) => {
+    return selectedWasteItems.some(item => item.waste_type === wasteType);
   };
 
   const getStatusBadgeVariant = (status) => {
@@ -539,8 +611,9 @@ const Dashboard = ({ auth }) => {
                 <Table responsive striped hover>
                   <thead>
                     <tr>
-                      <th>Waste Type</th>
-                      <th>Quantity</th>
+                      <th>Request ID</th>
+                      <th>Waste Types</th>
+                      <th>Total Quantity</th>
                       <th>Pickup Address</th>
                       <th>Status</th>
                       <th>Collector</th>
@@ -552,17 +625,50 @@ const Dashboard = ({ auth }) => {
                     {wasteRequests.map((request) => (
                       <tr key={request.id}>
                         <td>
+                          <code className="text-primary">{request.request_id || 'N/A'}</code>
+                        </td>
+                        <td>
                           {(() => {
-                            const wasteTypeInfo = getWasteTypeInfo(request.waste_type);
-                            return (
-                              <div className="d-flex align-items-center">
-                                <span className="me-2" style={{ fontSize: '1.2em' }}>{wasteTypeInfo.emoji}</span>
-                                <span className="text-capitalize">{wasteTypeInfo.label}</span>
-                              </div>
-                            );
+                            // Display multiple waste types if available
+                            if (request.waste_items && request.waste_items.length > 0) {
+                              return (
+                                <div>
+                                  {request.waste_items.map((item, index) => {
+                                    const wasteTypeInfo = getWasteTypeInfo(item.waste_type);
+                                    return (
+                                      <div key={index} className="d-flex align-items-center mb-1">
+                                        <span className="me-2" style={{ fontSize: '1.1em' }}>
+                                          {wasteTypeInfo.emoji}
+                                        </span>
+                                        <span className="text-capitalize small">
+                                          {wasteTypeInfo.label} ({item.quantity} kg)
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            } else {
+                              // Fallback for single waste type (backward compatibility)
+                              const wasteTypeInfo = getWasteTypeInfo(request.waste_type);
+                              return (
+                                <div className="d-flex align-items-center">
+                                  <span className="me-2" style={{ fontSize: '1.2em' }}>{wasteTypeInfo.emoji}</span>
+                                  <span className="text-capitalize">{wasteTypeInfo.label}</span>
+                                </div>
+                              );
+                            }
                           })()}
                         </td>
-                        <td>{request.quantity || 'N/A'}</td>
+                        <td>
+                          {(() => {
+                            if (request.waste_items && request.waste_items.length > 0) {
+                              const totalQuantity = request.waste_items.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0);
+                              return `${totalQuantity.toFixed(1)} kg`;
+                            }
+                            return `${request.quantity || 0} kg`;
+                          })()}
+                        </td>
                         <td className="text-truncate" style={{ maxWidth: '200px' }}>
                           {request.pickup_address}
                         </td>
@@ -845,9 +951,10 @@ const Dashboard = ({ auth }) => {
                 <Table responsive striped hover>
                   <thead>
                     <tr>
+                      <th>Request ID</th>
                       <th>Customer</th>
-                      <th>Waste Type</th>
-                      <th>Quantity</th>
+                      <th>Waste Types</th>
+                      <th>Total Quantity</th>
                       <th>Address</th>
                       <th>Distance</th>
                       <th>Created</th>
@@ -858,14 +965,57 @@ const Dashboard = ({ auth }) => {
                     {pendingRequests.map((request) => (
                       <tr key={request.id}>
                         <td>
+                          <code className="text-primary">{request.request_id || 'N/A'}</code>
+                        </td>
+                        <td>
                           <strong>{request.customer_first_name} {request.customer_last_name}</strong>
                           <br />
                           <small className="text-muted">{request.customer_phone}</small>
                         </td>
                         <td>
-                          <span className="text-capitalize">{request.waste_type}</span>
+                          {(() => {
+                            // Display multiple waste types if available
+                            if (request.waste_items && request.waste_items.length > 0) {
+                              return (
+                                <div>
+                                  {request.waste_items.map((item, index) => {
+                                    const wasteTypeInfo = getWasteTypeInfo(item.waste_type);
+                                    return (
+                                      <div key={index} className="d-flex align-items-center mb-1">
+                                        <span className="me-2" style={{ fontSize: '1.1em' }}>
+                                          {wasteTypeInfo.emoji}
+                                        </span>
+                                        <span className="text-capitalize small">
+                                          {wasteTypeInfo.label} ({item.quantity} kg)
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            } else {
+                              // Fallback for single waste type (backward compatibility)
+                              const wasteTypeInfo = getWasteTypeInfo(request.waste_type);
+                              return (
+                                <div className="d-flex align-items-center">
+                                  <span className="me-2" style={{ fontSize: '1.1em' }}>
+                                    {wasteTypeInfo.emoji}
+                                  </span>
+                                  <span className="text-capitalize">{wasteTypeInfo.label}</span>
+                                </div>
+                              );
+                            }
+                          })()}
                         </td>
-                        <td>{request.quantity || 'N/A'}</td>
+                        <td>
+                          {(() => {
+                            if (request.waste_items && request.waste_items.length > 0) {
+                              const totalQuantity = request.waste_items.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0);
+                              return `${totalQuantity.toFixed(1)} kg`;
+                            }
+                            return `${request.quantity || 0} kg`;
+                          })()}
+                        </td>
                         <td className="text-truncate" style={{ maxWidth: '200px' }}>
                           {request.pickup_address}
                         </td>
@@ -927,9 +1077,10 @@ const Dashboard = ({ auth }) => {
                 <Table responsive striped hover>
                   <thead>
                     <tr>
+                      <th>Request ID</th>
                       <th>Customer</th>
-                      <th>Waste Type</th>
-                      <th>Quantity</th>
+                      <th>Waste Types</th>
+                      <th>Total Quantity</th>
                       <th>Address</th>
                       <th>Status</th>
                       <th>Actions</th>
@@ -939,14 +1090,57 @@ const Dashboard = ({ auth }) => {
                     {wasteRequests.map((request) => (
                       <tr key={request.id}>
                         <td>
+                          <code className="text-primary">{request.request_id || 'N/A'}</code>
+                        </td>
+                        <td>
                           <strong>{request.customer_first_name} {request.customer_last_name}</strong>
                           <br />
                           <small className="text-muted">{request.customer_phone}</small>
                         </td>
                         <td>
-                          <span className="text-capitalize">{request.waste_type}</span>
+                          {(() => {
+                            // Display multiple waste types if available
+                            if (request.waste_items && request.waste_items.length > 0) {
+                              return (
+                                <div>
+                                  {request.waste_items.map((item, index) => {
+                                    const wasteTypeInfo = getWasteTypeInfo(item.waste_type);
+                                    return (
+                                      <div key={index} className="d-flex align-items-center mb-1">
+                                        <span className="me-2" style={{ fontSize: '1.1em' }}>
+                                          {wasteTypeInfo.emoji}
+                                        </span>
+                                        <span className="text-capitalize small">
+                                          {wasteTypeInfo.label} ({item.quantity} kg)
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            } else {
+                              // Fallback for single waste type (backward compatibility)
+                              const wasteTypeInfo = getWasteTypeInfo(request.waste_type);
+                              return (
+                                <div className="d-flex align-items-center">
+                                  <span className="me-2" style={{ fontSize: '1.1em' }}>
+                                    {wasteTypeInfo.emoji}
+                                  </span>
+                                  <span className="text-capitalize">{wasteTypeInfo.label}</span>
+                                </div>
+                              );
+                            }
+                          })()}
                         </td>
-                        <td>{request.quantity || 'N/A'}</td>
+                        <td>
+                          {(() => {
+                            if (request.waste_items && request.waste_items.length > 0) {
+                              const totalQuantity = request.waste_items.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0);
+                              return `${totalQuantity.toFixed(1)} kg`;
+                            }
+                            return `${request.quantity || 0} kg`;
+                          })()}
+                        </td>
                         <td className="text-truncate" style={{ maxWidth: '200px' }}>
                           {request.pickup_address}
                         </td>
@@ -1019,15 +1213,16 @@ const Dashboard = ({ auth }) => {
       {user.role === 'customer' ? customerDashboard() : collectorDashboard()}
       
       {/* Booking Modal */}
-      <Modal show={showBookingModal} onHide={() => setShowBookingModal(false)} size="lg">
+      <Modal show={showBookingModal} onHide={() => setShowBookingModal(false)} size="xl">
         <Modal.Header closeButton>
-          <Modal.Title>Create New Waste Collection Request</Modal.Title>
+          <Modal.Title>
+            <i className="fas fa-plus-circle me-2"></i>
+            Create New Waste Collection Request
+          </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
+        <Modal.Body className="waste-request-form">
           <Formik
             initialValues={{
-              waste_type: '',
-              quantity: '',
               pickup_address: '',
               pickup_city: selectedCity || user?.city || '',
               pickup_date: '',
@@ -1048,153 +1243,233 @@ const Dashboard = ({ auth }) => {
               setFieldValue 
             }) => (
               <Form noValidate onSubmit={handleSubmit}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Waste Type</Form.Label>
-                  <Form.Select
-                    name="waste_type"
-                    value={values.waste_type}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    isInvalid={touched.waste_type && !!errors.waste_type}
-                  >
-                    <option value="">Select waste type</option>
+                {/* Waste Type Selection */}
+                <div className="waste-type-selector">
+                  <h6>
+                    <i className="fas fa-recycle"></i>
+                    Select Waste Types
+                  </h6>
+                  <p className="text-muted mb-3">Choose the types of waste you want to dispose of and specify quantities</p>
+                  
+                  <div className="waste-type-grid">
                     {WASTE_TYPES.map(type => (
-                      <option key={type.value} value={type.value}>
-                        {type.emoji} {type.label}
-                      </option>
+                      <div 
+                        key={type.value} 
+                        className={`waste-type-card ${isWasteTypeSelected(type.value) ? 'selected' : ''}`}
+                      >
+                        <span className="waste-type-emoji">{type.emoji}</span>
+                        <div className="waste-type-label">{type.label}</div>
+                        
+                        {!isWasteTypeSelected(type.value) && (
+                          <div className="waste-type-quantity">
+                            <Form.Control
+                              type="number"
+                              placeholder="Quantity (kg)"
+                              min="0.1"
+                              step="0.1"
+                              value={tempQuantities[type.value] || ''}
+                              onChange={(e) => updateTempQuantity(type.value, e.target.value)}
+                              size="sm"
+                              className="mb-2"
+                            />
+                            <Button
+                              size="sm"
+                              variant="success"
+                              onClick={() => addWasteItem(type.value)}
+                              disabled={!tempQuantities[type.value] || tempQuantities[type.value] <= 0}
+                            >
+                              <i className="fas fa-plus me-1"></i>
+                              Add
+                            </Button>
+                          </div>
+                        )}
+                        
+                        {isWasteTypeSelected(type.value) && (
+                          <div className="waste-type-quantity">
+                            <Badge bg="success" className="mb-2">Added</Badge>
+                          </div>
+                        )}
+                      </div>
                     ))}
-                  </Form.Select>
-                  <Form.Control.Feedback type="invalid">
-                    {errors.waste_type}
-                  </Form.Control.Feedback>
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>Quantity (kg)</Form.Label>
-                  <Form.Control
-                    type="number"
-                    name="quantity"
-                    value={values.quantity}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    isInvalid={touched.quantity && !!errors.quantity}
-                    min={0.1}
-                    step={0.1}
-                  />
-                  <Form.Control.Feedback type="invalid">
-                    {errors.quantity}
-                  </Form.Control.Feedback>
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>Pickup Address</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="pickup_address"
-                    value={values.pickup_address}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    isInvalid={touched.pickup_address && !!errors.pickup_address}
-                  />
-                  <Form.Control.Feedback type="invalid">
-                    {errors.pickup_address}
-                  </Form.Control.Feedback>
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>Pickup City</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="pickup_city"
-                    value={values.pickup_city}
-                    onChange={(e) => {
-                      const city = e.target.value;
-                      setFieldValue('pickup_city', city);
-                    }}
-                    onBlur={handleBlur}
-                    isInvalid={touched.pickup_city && !!errors.pickup_city}
-                    placeholder="Enter the city for pickup"
-                  />
-                  <Form.Control.Feedback type="invalid">
-                    {errors.pickup_city}
-                  </Form.Control.Feedback>
-                  <Form.Text className="text-muted">
-                    After submitting your request, available collectors in this city will be shown in the dashboard.
-                  </Form.Text>
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>Pickup Date</Form.Label>
-                  <Form.Control
-                    type="date"
-                    name="pickup_date"
-                    value={values.pickup_date}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    isInvalid={touched.pickup_date && !!errors.pickup_date}
-                  />
-                  <Form.Control.Feedback type="invalid">
-                    {errors.pickup_date}
-                  </Form.Control.Feedback>
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>Pickup Time Preference</Form.Label>
-                  <Form.Select
-                    name="pickup_time"
-                    value={values.pickup_time}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    isInvalid={touched.pickup_time && !!errors.pickup_time}
-                  >
-                    <option value="">Select preferred time</option>
-                    <option value="morning">🌅 Morning (8:00 AM - 12:00 PM)</option>
-                    <option value="afternoon">☀️ Afternoon (12:00 PM - 5:00 PM)</option>
-                    <option value="evening">🌆 Evening (5:00 PM - 8:00 PM)</option>
-                    <option value="flexible">🕐 Flexible (Any time)</option>
-                  </Form.Select>
-                  <Form.Control.Feedback type="invalid">
-                    {errors.pickup_time}
-                  </Form.Control.Feedback>
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>Special Instructions</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    name="special_instructions"
-                    value={values.special_instructions}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    isInvalid={touched.special_instructions && !!errors.special_instructions}
-                    rows={3}
-                  />
-                  <Form.Control.Feedback type="invalid">
-                    {errors.special_instructions}
-                  </Form.Control.Feedback>
-                </Form.Group>
-                
-                <div className="d-flex justify-content-end">
-                  <Button variant="secondary" onClick={() => setShowBookingModal(false)} className="me-2">
-                    Cancel
-                  </Button>
-                  <Button 
-                    variant="success" 
-                    type="submit" 
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Spinner animation="border" size="sm" className="me-2" />
-                        Submitting...
-                      </>
-                    ) : (
-                      <>
-                        <i className="fas fa-paper-plane me-2"></i>
-                        Send Booking Request
-                      </>
+                  </div>
+                </div>
+
+                {/* Selected Waste Items */}
+                {selectedWasteItems.length > 0 && (
+                  <div className="selected-waste-items">
+                    <h6>
+                      <i className="fas fa-check-circle"></i>
+                      Selected Waste Items ({selectedWasteItems.length})
+                    </h6>
+                    
+                    {selectedWasteItems.map((item, index) => (
+                      <div key={item.waste_type} className="selected-waste-item">
+                        <div>
+                          <span className="me-2" style={{ fontSize: '1.2em' }}>{item.emoji}</span>
+                          <strong>{item.label}</strong>
+                          <span className="text-muted ms-2">- {item.quantity} kg</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="remove-item-btn"
+                          onClick={() => removeWasteItem(item.waste_type)}
+                        >
+                          <i className="fas fa-times"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Pickup Details */}
+                <div className="form-section">
+                  <h6>
+                    <i className="fas fa-map-marker-alt"></i>
+                    Pickup Details
+                  </h6>
+                  
+                  <Row>
+                    <Col md={12} className="mb-3">
+                      <Form.Label>Pickup Address *</Form.Label>
+                      <Form.Control
+                        type="text"
+                        name="pickup_address"
+                        value={values.pickup_address}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        isInvalid={touched.pickup_address && !!errors.pickup_address}
+                        placeholder="Enter your complete pickup address"
+                      />
+                      <Form.Control.Feedback type="invalid">
+                        {errors.pickup_address}
+                      </Form.Control.Feedback>
+                    </Col>
+                    
+                    <Col md={6} className="mb-3">
+                      <Form.Label>Pickup City *</Form.Label>
+                      <Form.Control
+                        type="text"
+                        name="pickup_city"
+                        value={values.pickup_city}
+                        onChange={(e) => {
+                          const city = e.target.value;
+                          setFieldValue('pickup_city', city);
+                        }}
+                        onBlur={handleBlur}
+                        isInvalid={touched.pickup_city && !!errors.pickup_city}
+                        placeholder="Enter the city for pickup"
+                      />
+                      <Form.Control.Feedback type="invalid">
+                        {errors.pickup_city}
+                      </Form.Control.Feedback>
+                    </Col>
+                    
+                    <Col md={6} className="mb-3">
+                      <Form.Label>Pickup Date *</Form.Label>
+                      <Form.Control
+                        type="date"
+                        name="pickup_date"
+                        value={values.pickup_date}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        isInvalid={touched.pickup_date && !!errors.pickup_date}
+                        min={new Date().toISOString().split('T')[0]}
+                      />
+                      <Form.Control.Feedback type="invalid">
+                        {errors.pickup_date}
+                      </Form.Control.Feedback>
+                    </Col>
+                  </Row>
+                  
+                  <Form.Group className="mb-3">
+                    <Form.Label>Pickup Time Preference *</Form.Label>
+                    <Form.Select
+                      name="pickup_time"
+                      value={values.pickup_time}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      isInvalid={touched.pickup_time && !!errors.pickup_time}
+                    >
+                      <option value="">Select preferred time</option>
+                      <option value="morning">🌅 Morning (8:00 AM - 12:00 PM)</option>
+                      <option value="afternoon">☀️ Afternoon (12:00 PM - 5:00 PM)</option>
+                      <option value="evening">🌆 Evening (5:00 PM - 8:00 PM)</option>
+                      <option value="flexible">🕐 Flexible (Any time)</option>
+                    </Form.Select>
+                    <Form.Control.Feedback type="invalid">
+                      {errors.pickup_time}
+                    </Form.Control.Feedback>
+                  </Form.Group>
+                </div>
+
+                {/* Additional Information */}
+                <div className="form-section">
+                  <h6>
+                    <i className="fas fa-comment-alt"></i>
+                    Additional Information
+                  </h6>
+                  
+                  <Form.Group className="mb-3">
+                    <Form.Label>Special Instructions</Form.Label>
+                    <Form.Control
+                      as="textarea"
+                      name="special_instructions"
+                      value={values.special_instructions}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      isInvalid={touched.special_instructions && !!errors.special_instructions}
+                      rows={3}
+                      placeholder="Any special instructions for the collector..."
+                    />
+                    <Form.Control.Feedback type="invalid">
+                      {errors.special_instructions}
+                    </Form.Control.Feedback>
+                  </Form.Group>
+                </div>
+
+                {/* Submit Buttons */}
+                <div className="d-flex justify-content-between align-items-center">
+                  <div>
+                    {selectedWasteItems.length > 0 && (
+                      <small className="text-muted">
+                        <i className="fas fa-info-circle me-1"></i>
+                        {selectedWasteItems.length} waste type(s) selected
+                      </small>
                     )}
-                  </Button>
+                  </div>
+                  
+                  <div>
+                    <Button 
+                      variant="secondary" 
+                      onClick={() => {
+                        setShowBookingModal(false);
+                        setSelectedWasteItems([]);
+                        setTempQuantities({});
+                      }} 
+                      className="me-2"
+                    >
+                      <i className="fas fa-times me-2"></i>
+                      Cancel
+                    </Button>
+                    <Button 
+                      variant="success" 
+                      type="submit" 
+                      disabled={isSubmitting || selectedWasteItems.length === 0}
+                      className="submit-btn"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Spinner animation="border" size="sm" className="me-2" />
+                          Creating Request...
+                        </>
+                      ) : (
+                        <>
+                          <i className="fas fa-paper-plane me-2"></i>
+                          Create Request ({selectedWasteItems.length} items)
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </Form>
             )}

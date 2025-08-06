@@ -67,6 +67,153 @@
   background: linear-gradient(45deg, #4CAF50, #2E7D32);
 }
 
+/* Waste Request Form Styles */
+.waste-request-form {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 15px;
+  padding: 2rem;
+  box-shadow: 0 8px 32px rgba(46, 125, 50, 0.1);
+}
+
+.waste-type-selector {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.waste-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.waste-type-card {
+  background: white;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  padding: 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.waste-type-card:hover {
+  border-color: #2E7D32;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(46, 125, 50, 0.2);
+}
+
+.waste-type-card.selected {
+  border-color: #2E7D32;
+  background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+}
+
+.waste-type-emoji {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+.waste-type-label {
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 0.5rem;
+}
+
+.waste-type-quantity {
+  margin-top: 0.5rem;
+}
+
+.selected-waste-items {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.selected-waste-item {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.remove-item-btn {
+  background: #dc3545;
+  border: none;
+  color: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.remove-item-btn:hover {
+  background: #c82333;
+}
+
+.form-section {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.form-section h6 {
+  color: #2E7D32;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+}
+
+.form-section h6 i {
+  margin-right: 0.5rem;
+}
+
+.modal-header {
+  background: linear-gradient(45deg, #2E7D32, #4CAF50);
+  color: white;
+  border-radius: 15px 15px 0 0;
+}
+
+.modal-header .modal-title {
+  font-weight: 600;
+}
+
+.modal-header .btn-close {
+  filter: invert(1);
+}
+
+.submit-btn {
+  background: linear-gradient(45deg, #2E7D32, #4CAF50);
+  border: none;
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.submit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(46, 125, 50, 0.4);
+  background: linear-gradient(45deg, #4CAF50, #2E7D32);
+}
+
 @media (max-width: 768px) {
   .login-page {
     background-attachment: scroll;
@@ -75,5 +222,18 @@
   
   .login-page .card-body {
     padding: 2rem 1.5rem;
+  }
+
+  .waste-type-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.5rem;
+  }
+  
+  .waste-request-form {
+    padding: 1rem;
+  }
+  
+  .form-section {
+    padding: 1rem;
   }
 }
