@@ -209,6 +209,31 @@ class WasteRequest {
       while (stmt.step()) {
         const row = stmt.getAsObject();
         console.log('Found request:', { id: row.id, collector_id: row.collector_id, status: row.status });
+        
+        // Get waste items for this request
+        const itemsQuery = `
+          SELECT waste_type, quantity 
+          FROM waste_request_items 
+          WHERE request_id = ?
+        `;
+        const itemsStmt = db.prepare(itemsQuery);
+        itemsStmt.bind([row.id]);
+        
+        const wasteItems = [];
+        while (itemsStmt.step()) {
+          wasteItems.push(itemsStmt.getAsObject());
+        }
+        itemsStmt.free();
+        
+        // Add waste items to the row
+        row.waste_items = wasteItems;
+        
+        // For backward compatibility, set waste_type and quantity from first item
+        if (wasteItems.length > 0) {
+          row.waste_type = wasteItems[0].waste_type;
+          row.quantity = wasteItems[0].quantity;
+        }
+        
         results.push(row);
       }
       stmt.free();
@@ -413,7 +438,33 @@ class WasteRequest {
       
       const results = [];
       while (stmt.step()) {
-        results.push(stmt.getAsObject());
+        const row = stmt.getAsObject();
+        
+        // Get waste items for this request
+        const itemsQuery = `
+          SELECT waste_type, quantity 
+          FROM waste_request_items 
+          WHERE request_id = ?
+        `;
+        const itemsStmt = db.prepare(itemsQuery);
+        itemsStmt.bind([row.id]);
+        
+        const wasteItems = [];
+        while (itemsStmt.step()) {
+          wasteItems.push(itemsStmt.getAsObject());
+        }
+        itemsStmt.free();
+        
+        // Add waste items to the row
+        row.waste_items = wasteItems;
+        
+        // For backward compatibility, set waste_type and quantity from first item
+        if (wasteItems.length > 0) {
+          row.waste_type = wasteItems[0].waste_type;
+          row.quantity = wasteItems[0].quantity;
+        }
+        
+        results.push(row);
       }
       stmt.free();
       

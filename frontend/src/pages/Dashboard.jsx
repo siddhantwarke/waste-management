@@ -19,6 +19,9 @@ const Dashboard = ({ auth }) => {
   const [selectedCity, setSelectedCity] = useState('');
   const [wasteRequests, setWasteRequests] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
+  const [filteredPendingRequests, setFilteredPendingRequests] = useState([]);
+  const [filteredWasteRequests, setFilteredWasteRequests] = useState([]);
+  const [requestIdFilter, setRequestIdFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -66,6 +69,27 @@ const Dashboard = ({ auth }) => {
       setNearbyCollectors([]);
     }
   }, [selectedCity, allCollectors]);
+
+  // Effect to filter requests based on request ID
+  useEffect(() => {
+    if (requestIdFilter.trim() === '') {
+      setFilteredPendingRequests(pendingRequests);
+      setFilteredWasteRequests(wasteRequests);
+    } else {
+      const filterValue = requestIdFilter.toLowerCase().trim();
+      
+      const filteredPending = pendingRequests.filter(request => 
+        request.request_id && request.request_id.toLowerCase().includes(filterValue)
+      );
+      
+      const filteredWaste = wasteRequests.filter(request => 
+        request.request_id && request.request_id.toLowerCase().includes(filterValue)
+      );
+      
+      setFilteredPendingRequests(filteredPending);
+      setFilteredWasteRequests(filteredWaste);
+    }
+  }, [requestIdFilter, pendingRequests, wasteRequests]);
 
   // Helper function to load all collectors
   const loadAllCollectors = async () => {
@@ -873,56 +897,39 @@ const Dashboard = ({ auth }) => {
           <p className="text-muted">Welcome back, {user.first_name}! Manage waste collection requests</p>
         </Col>
       </Row>
-      
-      {/* Quick Actions */}
-      <Row className="g-4 mb-5">
-        <Col md={6} lg={4}>
-          <Card className="h-100 shadow-sm">
-            <Card.Body className="text-center">
-              <div className="mb-3">
-                <i className="fas fa-search fa-3x text-primary"></i>
-              </div>
-              <Card.Title>Find Requests</Card.Title>
-              <Card.Text>
-                Find nearby waste collection requests in your area.
-              </Card.Text>
-              <Button variant="success" onClick={() => toast.info('Auto-refreshing...')}>
-                Refresh
-              </Button>
-            </Card.Body>
-          </Card>
-        </Col>
-        
-        <Col md={6} lg={4}>
-          <Card className="h-100 shadow-sm">
-            <Card.Body className="text-center">
-              <div className="mb-3">
-                <i className="fas fa-toggle-on fa-3x text-success"></i>
-              </div>
-              <Card.Title>Availability</Card.Title>
-              <Card.Text>
-                Toggle your availability for new requests.
-              </Card.Text>
-              <Button variant="success" onClick={() => toast.info('Feature coming soon!')}>
-                Available
-              </Button>
-            </Card.Body>
-          </Card>
-        </Col>
-        
-        <Col md={6} lg={4}>
-          <Card className="h-100 shadow-sm">
-            <Card.Body className="text-center">
-              <div className="mb-3">
-                <i className="fas fa-chart-line fa-3x text-info"></i>
-              </div>
-              <Card.Title>Statistics</Card.Title>
-              <Card.Text>
-                View your collection statistics and earnings.
-              </Card.Text>
-              <Button variant="info" onClick={() => toast.info('Feature coming soon!')}>
-                View Stats
-              </Button>
+
+      {/* Search Filter */}
+      <Row className="mb-4">
+        <Col md={6}>
+          <Card className="shadow-sm">
+            <Card.Body>
+              <h6 className="mb-3">
+                <i className="fas fa-search me-2"></i>
+                Filter by Request ID
+              </h6>
+              <Form.Group>
+                <Form.Control
+                  type="text"
+                  placeholder="Enter Request ID (e.g., WR-2024-001)"
+                  value={requestIdFilter}
+                  onChange={(e) => setRequestIdFilter(e.target.value)}
+                />
+              </Form.Group>
+              {requestIdFilter && (
+                <div className="mt-2">
+                  <small className="text-muted">
+                    Showing results for: <strong>{requestIdFilter}</strong>
+                  </small>
+                  <Button 
+                    variant="link" 
+                    size="sm" 
+                    className="p-0 ms-2"
+                    onClick={() => setRequestIdFilter('')}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              )}
             </Card.Body>
           </Card>
         </Col>
@@ -939,10 +946,15 @@ const Dashboard = ({ auth }) => {
               </h5>
             </Card.Header>
             <Card.Body>
-              {pendingRequests.length === 0 ? (
+              {filteredPendingRequests.length === 0 ? (
                 <div className="text-center py-4">
                   <i className="fas fa-clipboard-list fa-3x text-muted mb-3"></i>
-                  <p className="text-muted">No pending requests in your area.</p>
+                  <p className="text-muted">
+                    {requestIdFilter 
+                      ? `No pending requests found matching "${requestIdFilter}"`
+                      : "No pending requests in your area."
+                    }
+                  </p>
                   <Button variant="warning" onClick={() => loadDashboardData()}>
                     Refresh
                   </Button>
@@ -956,13 +968,12 @@ const Dashboard = ({ auth }) => {
                       <th>Waste Types</th>
                       <th>Total Quantity</th>
                       <th>Address</th>
-                      <th>Distance</th>
                       <th>Created</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pendingRequests.map((request) => (
+                    {filteredPendingRequests.map((request) => (
                       <tr key={request.id}>
                         <td>
                           <code className="text-primary">{request.request_id || 'N/A'}</code>
@@ -1020,13 +1031,6 @@ const Dashboard = ({ auth }) => {
                           {request.pickup_address}
                         </td>
                         <td>
-                          {request.distance ? (
-                            <Badge bg="info">{formatDistance(request.distance)}</Badge>
-                          ) : (
-                            <span className="text-muted">N/A</span>
-                          )}
-                        </td>
-                        <td>
                           {new Date(request.created_at).toLocaleDateString()}
                         </td>
                         <td>
@@ -1068,10 +1072,15 @@ const Dashboard = ({ auth }) => {
               </h5>
             </Card.Header>
             <Card.Body>
-              {wasteRequests.length === 0 ? (
+              {filteredWasteRequests.length === 0 ? (
                 <div className="text-center py-4">
                   <i className="fas fa-inbox fa-3x text-muted mb-3"></i>
-                  <p className="text-muted">No assigned requests. Accept some pending requests!</p>
+                  <p className="text-muted">
+                    {requestIdFilter 
+                      ? `No assigned requests found matching "${requestIdFilter}"`
+                      : "No assigned requests. Accept some pending requests!"
+                    }
+                  </p>
                 </div>
               ) : (
                 <Table responsive striped hover>
@@ -1087,7 +1096,7 @@ const Dashboard = ({ auth }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {wasteRequests.map((request) => (
+                    {filteredWasteRequests.map((request) => (
                       <tr key={request.id}>
                         <td>
                           <code className="text-primary">{request.request_id || 'N/A'}</code>

@@ -38,17 +38,6 @@ const Navigation = ({ auth, logout }) => {
                     </LinkContainer>
                   </>
                 )}
-                
-                {auth.user?.role === 'collector' && (
-                  <>
-                    <LinkContainer to="/available-requests">
-                      <Nav.Link>Available Requests</Nav.Link>
-                    </LinkContainer>
-                    <LinkContainer to="/my-collections">
-                      <Nav.Link>My Collections</Nav.Link>
-                    </LinkContainer>
-                  </>
-                )}
               </>
             )}
           </Nav>
